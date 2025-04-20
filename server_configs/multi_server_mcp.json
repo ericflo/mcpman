@@ -1,0 +1,31 @@
+{
+  "mcpServers": {
+    "calculator": {
+      "command": "/Users/ericflo/.local/bin/uv",
+      "args": [
+        "run",
+        "/Users/ericflo/Development/mcpman/mcp_servers/calculator.py",
+        "--transport",
+        "stdio"
+      ]
+    },
+    "filesystem_ops": {
+      "command": "/Users/ericflo/.local/bin/uv",
+      "args": [
+        "run",
+        "/Users/ericflo/Development/mcpman/mcp_servers/filesystem_ops.py",
+        "--transport",
+        "stdio"
+      ]
+    },
+    "datetime_utils": {
+      "command": "/Users/ericflo/.local/bin/uv",
+      "args": [
+        "run",
+        "/Users/ericflo/Development/mcpman/mcp_servers/datetime_utils.py",
+        "--transport",
+        "stdio"
+      ]
+    }
+  }
+}

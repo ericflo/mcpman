@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "filesystem_ops": {
+      "command": "/Users/ericflo/.local/bin/uv",
+      "args": [
+        "run",
+        "/Users/ericflo/Development/mcpman/mcp_servers/filesystem_ops.py",
+        "--transport",
+        "stdio"
+      ]
+    }
+  }
+}
