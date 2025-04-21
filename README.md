@@ -1,225 +1,169 @@
 # MCPMan (MCP Manager)
 
-MCPMan is a tool designed to manage and interact with Model Context Protocol (MCP) servers, enabling agentic workflows powered by various Large Language Models (LLMs).
+MCPMan orchestrates interactions between LLMs and Model Context Protocol (MCP) servers, making it easy to create powerful agentic workflows.
+
+## Quick Start
+
+Run MCPMan instantly without installing using `uvx`:
+
+```bash
+# Run with OpenAI
+uvx mcpman -c server_configs/multi_server_mcp.json -i openai -m gpt-4o -p "Write a short poem about robots"
+
+# Run with Claude
+uvx mcpman -c server_configs/calculator_server_mcp.json -i anthropic -m claude-3-sonnet-20240229 -p "Calculate 245 * 378"
+
+# Run with a local Ollama model
+uvx mcpman -c server_configs/filesystem_server_mcp.json -i ollama -m llama3:8b -p "List files in this directory"
+```
+
+You can also use `uv run` for quick one-off executions:
+
+```bash
+uv run github.com/ericflo/mcpman -c server_configs/multi_server_mcp.json -i openai -m gpt-4o -p "What time is it in Tokyo?"
+```
+
+## Core Features
+
+- **One-command setup**: Manage and launch MCP servers directly
+- **Tool orchestration**: Automatically connect LLMs to any MCP-compatible tool
+- **Detailed logging**: JSON structured logs for every interaction
+- **Multiple LLM support**: Works with OpenAI, Anthropic, Google, Ollama, LMStudio and more
+- **Flexible configuration**: Supports stdio and SSE server communication
 
 ## Installation
 
-MCPMan uses [`uv`](https://github.com/astral-sh/uv) for dependency management and installation. `uv` is a very fast Python package installer and resolver, written in Rust, intended as a drop-in replacement for `pip` and `pip-tools`.
-
-Ensure you have `uv` installed. You can usually install it via `pip`, `pipx`, or your system's package manager. See the [`uv` installation guide](https://github.com/astral-sh/uv?tab=readme-ov-file#installation) for details.
-
-Once `uv` is installed, you can install MCPMan directly from the repository (replace `<TAG>` with the desired version or omit for the latest main branch):
-
 ```bash
-uv pip install git+https://github.com/ericflo/mcpman.git@<TAG>
+# Install with pip
+pip install mcpman
+
+# Install with uv
+uv pip install mcpman
+
+# Install from GitHub
+uvx pip install git+https://github.com/ericflo/mcpman.git
 ```
 
-## Core Functionality
+## Basic Usage
 
-1.  **Server Management**: Spin up and manage multiple MCP servers defined in a configuration file, similar to how clients like Cursor handle MCP integrations. MCPMan supports servers communicating over `stdio` (managed by MCPMan) and `SSE` (Server-Sent Events, typically manually managed by the user).
-2.  **Tool Integration**: Automatically connect to the managed MCP servers and extract the JSON schema for the tools they provide.
-3.  **Agentic Loops & Logging**: Execute agentic tasks by interacting with LLMs. MCPMan orchestrates the communication between the LLM and the MCP tools, providing **detailed, incremental logging** of the agent's reasoning, tool calls, and results throughout the process.
+```bash
+mcpman -c <CONFIG_FILE> -i <IMPLEMENTATION> -m <MODEL> -p "<PROMPT>"
+```
+
+Examples:
+
+```bash
+# Use local models with Ollama
+mcpman -c ./server_configs/filesystem_server_mcp.json \
+       -i ollama \
+       -m gemma3:4b-it-qat \
+       -p "List files in the current directory and count the lines in README.md"
+
+# Use OpenAI with system message
+mcpman -c ./server_configs/multi_server_mcp.json \
+       -i openai \
+       -m gpt-4o \
+       -s "You are a helpful assistant. Use tools effectively." \
+       -p "What time is it in Tokyo right now and what's the weather like there?"
+```
+
+## Server Configuration
+
+MCPMan uses JSON configuration files to define the MCP servers. Examples:
+
+**Node.js stdio Server**:
+```json
+{
+  "mcpServers": {
+    "calculator": {
+      "command": "npx",
+      "args": ["-y", "mcp-server"],
+      "env": { "API_KEY": "value" }
+    }
+  }
+}
+```
+
+**Python stdio Server**:
+```json
+{
+  "mcpServers": {
+    "datetime": {
+      "command": "python",
+      "args": ["-m", "mcp_servers.datetime_utils"],
+      "env": { "TIMEZONE_API_KEY": "abc123" }
+    }
+  }
+}
+```
+
+**SSE Server** (manually managed):
+```json
+{
+  "mcpServers": {
+    "filesystem": {
+      "url": "http://localhost:3000/sse"
+    }
+  }
+}
+```
+
+## Key Options
+
+| Option | Description |
+|--------|-------------|
+| `-c, --config <PATH>` | Path to MCP server config file |
+| `-i, --implementation <IMPL>` | LLM implementation (openai, anthropic, google, ollama, lmstudio) |
+| `-m, --model <MODEL>` | Model name (gpt-4o, claude-3-opus-20240229, etc.) |
+| `-p, --prompt <PROMPT>` | User prompt (text or file path) |
+| `-s, --system <MESSAGE>` | Optional system message |
+| `--base-url <URL>` | Custom endpoint URL |
+| `--temperature <FLOAT>` | Sampling temperature (default: 0.7) |
+| `--max-tokens <INT>` | Maximum response tokens |
+| `--no-verify` | Disable task verification |
+
+API keys are set via environment variables: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, etc.
 
 ## Why MCPMan?
 
-Developers building LLM agents with tool use often face challenges:
-
-- **Diverse Tooling APIs**: Interacting with different tools often requires writing bespoke client code for each protocol (`stdio`, `SSE`, REST, etc.).
-- **Inconsistent LLM Integration**: Different LLMs have varying levels of support and formats for tool calling.
-- **Debugging Agent Behavior**: Understanding _why_ an agent made a particular decision or tool call can be difficult without detailed, structured logs.
-
-MCPMan addresses these challenges by:
-
-- **Standardizing Interaction**: Leveraging the Model Context Protocol (MCP), it provides a unified way to manage and communicate with diverse tools, regardless of their underlying transport (`stdio` or `SSE`).
-- **Simplifying LLM Integration**: It abstracts the complexities of tool schema formatting and interaction loops for compatible LLMs (initially focusing on OpenAI-compatible APIs).
-- **Providing Granular Logging**: MCPMan captures each step of the agent's interaction—prompting, LLM reasoning (if available), tool selection, tool input/output, and final responses—creating a clear audit trail for analysis and debugging.
-
-It acts as a central orchestrator, streamlining the development and debugging of agentic workflows that rely on external tools.
-
-## How it Works
-
-1.  **Configuration**: Define the MCP servers you want to use in a JSON configuration file. This file specifies how to start (`stdio`) or connect (`SSE`) to each server.
-2.  **Initialization**: Provide an initial prompt (system and/or user message) to kick off the agentic process.
-3.  **Execution & Logging**:
-    - MCPMan sends the prompt and available tool schemas to the configured LLM.
-    - **(Log)** Agent receives the request.
-    - The LLM processes the prompt and may request to use one or more tools.
-    - **(Log)** Agent decides to call a tool (or respond directly).
-    - MCPMan receives the tool call request, executes the corresponding function via the appropriate MCP server, and sends the result back to the LLM.
-    - **(Log)** Tool execution details (request, response/error).
-    - This loop continues until the LLM indicates the task is complete or no further tool calls are needed, with each step being logged.
-
-## Configuration Examples
-
-MCPMan uses a JSON configuration file to define the servers to manage. This format is inspired by clients like Cursor and supports both `stdio` and `SSE` transports.
-
-**Example: Node.js stdio Server (Managed by MCPMan)**
-
-```json
-{
-  "mcpServers": {
-    "server-name": {
-      "command": "npx",
-      "args": ["-y", "mcp-server"],
-      "env": {
-        "API_KEY": "value"
-      }
-    }
-  }
-}
-```
-
-**Example: Python stdio Server (Managed by MCPMan)**
-
-```json
-{
-  "mcpServers": {
-    "server-name": {
-      "command": "python",
-      "args": ["mcp-server.py"],
-      "env": {
-        "API_KEY": "value"
-      }
-    }
-  }
-}
-```
-
-**Example: SSE Server (Manually Managed)**
-
-For SSE servers, you need to run the server process separately and provide the URL to MCPMan.
-
-```json
-{
-  "mcpServers": {
-    "server-name": {
-      "url": "http://localhost:3000/sse",
-      "env": {
-        "API_KEY": "value" // Environment variables/secrets needed by the server
-      }
-    }
-  }
-}
-```
-
-## Usage
-
-MCPMan is designed to be run from the command line. The minimum required arguments specify the MCP server configuration, the LLM implementation/model, and the initial prompt.
-
-```bash
-mcpman -c <PATH> -i <IMPLEMENTATION> -m <MODEL> -p "<PROMPT>"
-```
-
-**Example: Simple Invocation (Ollama - Local)**
-
-This example uses a local Ollama model with just the required flags.
-
-```bash
-mcpman -c ./mcp-servers.json \
-       -i ollama \
-       -m gemma3:4b-it-qat \
-       -p "Read the file 'README.md' and summarize its main points."
-```
-
-**Example: More Options (OpenAI)**
-
-You can add more flags for finer control, like providing a system message or adjusting model parameters.
-
-```bash
-mcpman -c ./mcp-servers.json \
-       -i openai \
-       -m gpt-4o \
-       -s "You are a helpful AI assistant. Use tools effectively to answer the user." \
-       --temperature 0.5 \
-       -p "Check the weather in London and find the top 3 news headlines from Associated Press."
-```
-
-**Key Options:**
-
-- `-c, --config <PATH>`: (Required) Path to the JSON file containing MCP server configurations.
-- `-i, --impl, --implementation <IMPLEMENTATION>`: (Required) Name of the LLM implementation to use (e.g., `openai`, `anthropic`, `google`, `ollama`, `lmstudio`).
-- `-m, --model <MODEL>`: (Required) Model identifier for the chosen implementation (e.g., `gpt-4o`, `claude-3-opus-20240229`, `gemma3:12b-it-qat`).
-- `-p, --prompt <PROMPT>`: (Required) The initial prompt to start the agentic loop. Can be a message or a path to a file containing the prompt.
-- `-s, --system <MESSAGE>`: (Optional) An initial system message to guide the LLM's behavior.
-- `--base-url <URL>`: (Optional) Custom base URL for implementations like Ollama, LMStudio, or other OpenAI-compatible endpoints. Defaults to implementation-specific standards (e.g., `http://localhost:11434` for Ollama).
-- `--temperature <FLOAT>`: (Optional) Sampling temperature for the LLM (e.g., `0.7`).
-- `--max-tokens <INT>`: (Optional) Maximum number of tokens for the LLM response.
-- `--no-verify`: (Optional) Disable task verification. By default, verification is enabled to ensure the task is complete before finishing.
-- `--verify-prompt <PROMPT>`: (Optional) Provide a custom verification prompt or path to a verification prompt file. Cannot be used with `--no-verify`.
-
-_(Note: API keys are typically expected to be configured via environment variables like `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, etc.)_
+- **Standardized interaction**: Unified interface for diverse tools
+- **Simplified development**: Abstract away LLM-specific tool call formats
+- **Debugging support**: Detailed JSONL logs for every step in the agent process 
+- **Local or cloud**: Works with local or cloud-based LLMs
 
 ## Supported LLMs
 
-MCPMan aims for broad compatibility. Initially, it targets LLMs supporting the OpenAI `/chat/completions` endpoint format with tool calling capabilities. This includes providers such as:
-
 - OpenAI (GPT models)
-- Google Gemini (via compatible endpoints)
-- Anthropic Claude (via compatible endpoints)
+- Anthropic (Claude models)
+- Google Gemini
 - OpenRouter
-- LM Studio (local models)
 - Ollama (local models)
-
-## Future Goals
-
-- Support for additional LLM provider APIs (like Anthropic's native API for models such as Claude 3.7).
-- More sophisticated agentic control flows.
-- Enhanced configuration options.
+- LM Studio (local models)
 
 ## Development Setup
 
-Interested in contributing? Here's how to set up your development environment using `uv`:
+```bash
+# Clone and setup
+git clone https://github.com/ericflo/mcpman.git
+cd mcpman
 
-1.  **Clone the repository:**
+# Create environment and install deps
+uvx venv
+source .venv/bin/activate  # Linux/macOS
+# or .venv\Scripts\activate  # Windows
+uvx pip install -e ".[dev]"
 
-    ```bash
-    git clone https://github.com/ericflo/mcpman.git
-    cd mcpman
-    ```
-
-2.  **Create and activate a virtual environment:**
-
-    ```bash
-    uv venv # Creates a .venv directory
-    source .venv/bin/activate # Linux/macOS
-    # .venv\Scripts\activate # Windows
-    ```
-
-3.  **Install dependencies (including development tools):**
-
-    ```bash
-    uv pip install -e ".[dev]"
-    ```
-
-    This installs the package in editable mode (`-e`) along with the development dependencies defined in `pyproject.toml`.
-
-4.  **Run tests (Example):**
-
-    ```bash
-    pytest tests/
-    ```
-
-5.  **(Optional) Pre-commit Hooks:** If the project uses pre-commit hooks for linting/formatting, install them:
-    ```bash
-    pre-commit install
-    ```
-
-Now you're ready to start developing!
+# Run tests
+pytest tests/
+```
 
 ## Project Structure
 
-The project follows a standard Python project layout:
+- `src/mcpman/`: Core source code
+- `mcp_servers/`: Example MCP servers for testing
+- `server_configs/`: Example configuration files
+- `logs/`: Auto-generated structured JSONL logs
 
-- `src/mcpman/`: Contains the core source code for the MCPMan application.
-  - `cli.py`: Entry point for the command-line interface (using Typer/Click).
-  - `mcp/`: Modules related to MCP server management and communication.
-  - `llm/`: Modules for interacting with different LLM providers.
-  - `logging/`: Custom logging setup.
-  - `config.py`: Configuration loading and validation.
-- `tests/`: Contains unit and integration tests.
-- `pyproject.toml`: Defines project metadata, dependencies (including optional `[dev]` dependencies), and build system configuration (managed by `uv`).
-- `README.md`: This file.
-- `.gitignore`: Specifies intentionally untracked files that Git should ignore.
-- `(Optional) .pre-commit-config.yaml`: Configuration for pre-commit hooks.
+## License
 
-Understanding this structure will help you navigate the codebase and locate relevant files for your contributions.
+Licensed under the [Apache License 2.0](LICENSE).
