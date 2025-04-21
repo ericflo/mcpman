@@ -139,6 +139,7 @@ API keys are set via environment variables: `OPENAI_API_KEY`, `GEMINI_API_KEY`, 
 ## Currently Supported LLMs
 
 - OpenAI (GPT-4.1, GPT-4.1-mini, GPT-4.1-nano)
+- Anthropic Claude (claude-3-7-sonnet-20250219, etc.)
 - Google Gemini (gemini-2.0-flash-001, etc.)
 - OpenRouter
 - Ollama (llama3, codellama, etc.)
