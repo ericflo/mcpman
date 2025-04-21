@@ -7,20 +7,23 @@ MCPMan orchestrates interactions between LLMs and Model Context Protocol (MCP) s
 Run MCPMan instantly without installing using `uvx`:
 
 ```bash
-# Run with OpenAI
-uvx mcpman -c server_configs/multi_server_mcp.json -i openai -m gpt-4o -p "Write a short poem about robots"
+# Use the calculator server to perform math operations
+uvx mcpman -c server_configs/calculator_server_mcp.json -i openai -m gpt-4.1-mini -p "What is 1567 * 329 and then divide by 58?"
 
-# Run with Claude
-uvx mcpman -c server_configs/calculator_server_mcp.json -i anthropic -m claude-3-sonnet-20240229 -p "Calculate 245 * 378"
+# Use the datetime server to check time in different timezones
+uvx mcpman -c server_configs/datetime_server_mcp.json -i gemini -m gemini-2.0-flash-001 -p "What time is it right now in Tokyo, London, and New York?"
 
-# Run with a local Ollama model
-uvx mcpman -c server_configs/filesystem_server_mcp.json -i ollama -m llama3:8b -p "List files in this directory"
+# Use the filesystem server with Ollama for file operations
+uvx mcpman -c server_configs/filesystem_server_mcp.json -i ollama -m llama3:8b -p "Create a file called example.txt with a sample Python function, then read it back to me"
+
+# Use the filesystem server with LMStudio's local models
+uvx mcpman -c server_configs/filesystem_server_mcp.json -i lmstudio -m qwen2.5-7b-instruct-1m -p "Create a simple JSON file with sample data and read it back to me"
 ```
 
-You can also use `uv run` for quick one-off executions:
+You can also use `uv run` for quick one-off executions directly from GitHub:
 
 ```bash
-uv run github.com/ericflo/mcpman -c server_configs/multi_server_mcp.json -i openai -m gpt-4o -p "What time is it in Tokyo?"
+uv run github.com/ericflo/mcpman -c server_configs/calculator_server_mcp.json -i openai -m gpt-4.1-mini -p "What is 256 * 432?"
 ```
 
 ## Core Features
@@ -28,7 +31,7 @@ uv run github.com/ericflo/mcpman -c server_configs/multi_server_mcp.json -i open
 - **One-command setup**: Manage and launch MCP servers directly
 - **Tool orchestration**: Automatically connect LLMs to any MCP-compatible tool
 - **Detailed logging**: JSON structured logs for every interaction
-- **Multiple LLM support**: Works with OpenAI, Anthropic, Google, Ollama, LMStudio and more
+- **Multiple LLM support**: Works with OpenAI, Google Gemini, Ollama, LMStudio and more
 - **Flexible configuration**: Supports stdio and SSE server communication
 
 ## Installation
@@ -53,56 +56,58 @@ mcpman -c <CONFIG_FILE> -i <IMPLEMENTATION> -m <MODEL> -p "<PROMPT>"
 Examples:
 
 ```bash
-# Use local models with Ollama
+# Use local models with Ollama for filesystem operations
 mcpman -c ./server_configs/filesystem_server_mcp.json \
        -i ollama \
-       -m gemma3:4b-it-qat \
-       -p "List files in the current directory and count the lines in README.md"
+       -m codellama:13b \
+       -p "Create a simple bash script that counts files in the current directory and save it as count.sh"
 
-# Use OpenAI with system message
+# Use OpenAI with multi-server config
 mcpman -c ./server_configs/multi_server_mcp.json \
        -i openai \
-       -m gpt-4o \
+       -m gpt-4.1-mini \
        -s "You are a helpful assistant. Use tools effectively." \
-       -p "What time is it in Tokyo right now and what's the weather like there?"
+       -p "Calculate 753 * 219 and tell me what time it is in Sydney, Australia"
 ```
 
 ## Server Configuration
 
 MCPMan uses JSON configuration files to define the MCP servers. Examples:
 
-**Node.js stdio Server**:
+**Calculator Server**:
 ```json
 {
   "mcpServers": {
     "calculator": {
-      "command": "npx",
-      "args": ["-y", "mcp-server"],
-      "env": { "API_KEY": "value" }
+      "command": "python",
+      "args": ["-m", "mcp_servers.calculator"],
+      "env": {}
     }
   }
 }
 ```
 
-**Python stdio Server**:
+**DateTime Server**:
 ```json
 {
   "mcpServers": {
     "datetime": {
       "command": "python",
       "args": ["-m", "mcp_servers.datetime_utils"],
-      "env": { "TIMEZONE_API_KEY": "abc123" }
+      "env": {}
     }
   }
 }
 ```
 
-**SSE Server** (manually managed):
+**Filesystem Server**:
 ```json
 {
   "mcpServers": {
     "filesystem": {
-      "url": "http://localhost:3000/sse"
+      "command": "python",
+      "args": ["-m", "mcp_servers.filesystem_ops"],
+      "env": {}
     }
   }
 }
@@ -113,8 +118,8 @@ MCPMan uses JSON configuration files to define the MCP servers. Examples:
 | Option | Description |
 |--------|-------------|
 | `-c, --config <PATH>` | Path to MCP server config file |
-| `-i, --implementation <IMPL>` | LLM implementation (openai, anthropic, google, ollama, lmstudio) |
-| `-m, --model <MODEL>` | Model name (gpt-4o, claude-3-opus-20240229, etc.) |
+| `-i, --implementation <IMPL>` | LLM implementation (openai, gemini, ollama, lmstudio) |
+| `-m, --model <MODEL>` | Model name (gpt-4.1-mini, gemini-2.0-flash-001, llama3:8b, qwen2.5-7b-instruct-1m, etc.) |
 | `-p, --prompt <PROMPT>` | User prompt (text or file path) |
 | `-s, --system <MESSAGE>` | Optional system message |
 | `--base-url <URL>` | Custom endpoint URL |
@@ -122,23 +127,22 @@ MCPMan uses JSON configuration files to define the MCP servers. Examples:
 | `--max-tokens <INT>` | Maximum response tokens |
 | `--no-verify` | Disable task verification |
 
-API keys are set via environment variables: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, etc.
+API keys are set via environment variables: `OPENAI_API_KEY`, `GEMINI_API_KEY`, etc.
 
 ## Why MCPMan?
 
 - **Standardized interaction**: Unified interface for diverse tools
 - **Simplified development**: Abstract away LLM-specific tool call formats
 - **Debugging support**: Detailed JSONL logs for every step in the agent process 
-- **Local or cloud**: Works with local or cloud-based LLMs
+- **Local or cloud**: Works with both local and cloud-based LLMs
 
-## Supported LLMs
+## Currently Supported LLMs
 
-- OpenAI (GPT models)
-- Anthropic (Claude models)
-- Google Gemini
+- OpenAI (GPT-4.1, GPT-4.1-mini, GPT-4.1-nano)
+- Google Gemini (gemini-2.0-flash-001, etc.)
 - OpenRouter
-- Ollama (local models)
-- LM Studio (local models)
+- Ollama (llama3, codellama, etc.)
+- LM Studio (Qwen, Mistral, and other local models)
 
 ## Development Setup
 
@@ -148,10 +152,10 @@ git clone https://github.com/ericflo/mcpman.git
 cd mcpman
 
 # Create environment and install deps
-uvx venv
+uv venv
 source .venv/bin/activate  # Linux/macOS
 # or .venv\Scripts\activate  # Windows
-uvx pip install -e ".[dev]"
+uv pip install -e ".[dev]"
 
 # Run tests
 pytest tests/
