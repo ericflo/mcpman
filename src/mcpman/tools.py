@@ -69,19 +69,53 @@ class Tool:
                 sanitized_props = {}
                 for name, prop_info in input_props.items():
                     if isinstance(prop_info, dict) and "type" in prop_info:
-                        sanitized_props[name] = prop_info
-                    else:
-                        sanitized_props[name] = {
-                            "type": "string",
-                            "description": str(
-                                prop_info.get(
-                                    "description", "Parameter without defined type"
+                        # Handle array type with prefixItems or default structure
+                        if prop_info.get("type") == "array":
+                            # Check if it has prefixItems (tuple-like structure)
+                            if "prefixItems" in prop_info:
+                                # Convert to standard array with items for OpenAI
+                                fixed_prop = prop_info.copy()
+                                # Set items to a generic schema if not present
+                                if "items" not in fixed_prop:
+                                    # Use the first prefix item's type as the items type
+                                    # or fallback to string if can't determine
+                                    first_type = "string"
+                                    if (isinstance(fixed_prop.get("prefixItems"), list) and 
+                                        len(fixed_prop["prefixItems"]) > 0 and
+                                        "type" in fixed_prop["prefixItems"][0]):
+                                        first_type = fixed_prop["prefixItems"][0]["type"]
+                                    
+                                    fixed_prop["items"] = {"type": first_type}
+                                sanitized_props[name] = fixed_prop
+                                logging.info(
+                                    f"Fixed array property '{name}' in tool '{self.name}' to include 'items'"
                                 )
-                            ),
-                        }
-                        logging.warning(
-                            f"Property '{name}' in tool '{self.name}' schema missing type, defaulting to string."
-                        )
+                            else:
+                                sanitized_props[name] = prop_info
+                        else:
+                            sanitized_props[name] = prop_info
+                    else:
+                        # Special handling for output_schema which could be either a string or object
+                        if name == "output_schema":
+                            sanitized_props[name] = {
+                                "type": "string",
+                                "description": "JSON schema as a string for structured output",
+                            }
+                            logging.info(
+                                f"Property 'output_schema' in tool '{self.name}' set as string type for OpenAI compatibility"
+                            )
+                        else:
+                            sanitized_props[name] = {
+                                "type": "string",
+                                "description": str(
+                                    prop_info.get(
+                                        "description", "Parameter without defined type"
+                                    )
+                                ),
+                            }
+                            logging.warning(
+                                f"Property '{name}' in tool '{self.name}' schema missing type, defaulting to string."
+                            )
                 parameters_schema["properties"] = sanitized_props
             
             # Extract required fields
