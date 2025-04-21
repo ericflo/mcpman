@@ -38,7 +38,7 @@ def parse_args() -> argparse.Namespace:
     Returns:
         Parsed arguments
     """
-    parser = argparse.ArgumentParser(description="Run MCPMan with configurable LLM.")
+    parser = argparse.ArgumentParser(description="MCPMan - Model Context Protocol Manager for agentic LLM workflows.")
 
     # Server configuration
     parser.add_argument(
@@ -54,7 +54,8 @@ def parse_args() -> argparse.Namespace:
     provider_group = parser.add_mutually_exclusive_group()
     provider_group.add_argument(
         "-i",
-        "--impl", "--implementation",
+        "--impl",
+        "--implementation",
         dest="impl",
         choices=PROVIDERS.keys(),
         help="Select a pre-configured LLM implementation (provider) to use (overrides environment).",
@@ -104,11 +105,16 @@ def parse_args() -> argparse.Namespace:
     )
 
     # Task verification
-    parser.add_argument(
-        "--verify",
-        nargs="?",
-        const=True,
-        help="Enable task verification to ensure the task is complete. Optionally provide a custom verification prompt or path to a file containing the prompt.",
+    verification_group = parser.add_mutually_exclusive_group()
+    verification_group.add_argument(
+        "--no-verify",
+        action="store_true",
+        help="Disable task verification (verification is on by default).",
+    )
+    verification_group.add_argument(
+        "--verify-prompt",
+        dest="verification_prompt",
+        help="Provide a custom verification prompt or path to a file containing the prompt."
     )
 
     # Debug logging
@@ -193,14 +199,12 @@ async def main() -> None:
     user_prompt = read_file_if_exists(args.prompt)
 
     # Process verification settings
-    verify_completion = False
+    verify_completion = not args.no_verify  # Verification is on by default unless --no-verify is specified
     verification_prompt = None
 
-    if args.verify is not None:
-        verify_completion = True
-        # If args.verify is a string (not just True), check if it's a file path
-        if isinstance(args.verify, str):
-            verification_prompt = read_file_if_exists(args.verify)
+    # Check if a custom verification prompt was provided
+    if args.verification_prompt:
+        verification_prompt = read_file_if_exists(args.verification_prompt)
 
     # Initialize servers and run the agent
     await initialize_and_run(

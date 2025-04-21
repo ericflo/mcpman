@@ -146,7 +146,8 @@ mcpman -c ./mcp-servers.json \
 - `--base-url <URL>`: (Optional) Custom base URL for implementations like Ollama, LMStudio, or other OpenAI-compatible endpoints. Defaults to implementation-specific standards (e.g., `http://localhost:11434` for Ollama).
 - `--temperature <FLOAT>`: (Optional) Sampling temperature for the LLM (e.g., `0.7`).
 - `--max-tokens <INT>`: (Optional) Maximum number of tokens for the LLM response.
-- `--verify [PROMPT]`: (Optional) Enable task verification to ensure the task is complete before finishing. Optionally provide a custom verification prompt or path to a verification prompt file.
+- `--no-verify`: (Optional) Disable task verification. By default, verification is enabled to ensure the task is complete before finishing.
+- `--verify-prompt <PROMPT>`: (Optional) Provide a custom verification prompt or path to a verification prompt file. Cannot be used with `--no-verify`.
 
 _(Note: API keys are typically expected to be configured via environment variables like `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, etc.)_
 

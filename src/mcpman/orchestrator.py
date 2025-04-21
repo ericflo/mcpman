@@ -442,11 +442,11 @@ async def run_agent(
                     # Continue to next turn
                     continue
             else:
-                # No verification, assume final answer
+                # No verification (explicitly disabled), assume final answer
                 if content:
-                    print(f"\nFinal Answer:\n{content}", flush=True)
+                    print(f"\nFinal Answer (verification disabled):\n{content}", flush=True)
                 else:
-                    print("\nFinal Answer: (LLM provided no content)", flush=True)
+                    print("\nFinal Answer (verification disabled): (LLM provided no content)", flush=True)
                     logging.warning(f"Final assistant message had no content: {assistant_message}")
                 break  # Exit loop
     else:
