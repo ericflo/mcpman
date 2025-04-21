@@ -9,7 +9,10 @@ All notable changes to MCPMan will be documented in this file.
 - Added documentation for Claude model support in README
 
 ### Fixed
-- Fixed issue with Claude repeatedly calling the same tool by implementing deduplication of identical tool calls
+- Fixed issue with Claude repeatedly calling the same tool by implementing intelligent deduplication that handles:
+  - Removing exact duplicate tool calls (same name and arguments)
+  - Allowing multiple calls to the same tool with different arguments
+  - Properly handling JSON object key ordering in arguments comparison
 - Fixed handling of messages without content in Anthropic client
 
 ### Changed

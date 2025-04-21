@@ -123,8 +123,8 @@ class AnthropicClient(BaseLLMClient):
         text_parts = []
         tool_calls = []
         
-        # Track tool names to detect duplicate tool calls to the same function
-        seen_tool_names = set()
+        # Track unique tool calls based on name + arguments
+        seen_tool_signatures = set()
         
         for idx, block in enumerate(content_blocks):
             if isinstance(block, dict):
@@ -132,15 +132,21 @@ class AnthropicClient(BaseLLMClient):
                     text_parts.append(block.get("text", ""))
                 elif block.get("type") == "tool_use":
                     tool_name = block.get("name", "unknown_tool")
+                    tool_input = block.get("input", {})
                     
-                    # Skip duplicate tool calls to the same function
-                    # This helps prevent Claude from repeatedly calling the same tool
-                    if tool_name in seen_tool_names:
-                        logging.warning(f"Skipping duplicate tool call to {tool_name}")
+                    # Create a signature combining tool name and arguments
+                    # Sort keys to ensure consistent ordering
+                    tool_args_str = json.dumps(tool_input, sort_keys=True)
+                    tool_signature = f"{tool_name}:{tool_args_str}"
+                    
+                    # Skip duplicate tool calls with identical name AND arguments
+                    # This prevents exact duplicates while allowing same tool with different args
+                    if tool_signature in seen_tool_signatures:
+                        logging.warning(f"Skipping duplicate tool call to {tool_name} with identical arguments")
                         continue
                     
-                    # Add to seen tools
-                    seen_tool_names.add(tool_name)
+                    # Add to seen tool signatures
+                    seen_tool_signatures.add(tool_signature)
                     
                     # Create OpenAI-compatible tool call format
                     tool_calls.append({
@@ -148,7 +154,7 @@ class AnthropicClient(BaseLLMClient):
                         "type": "function",
                         "function": {
                             "name": tool_name,
-                            "arguments": json.dumps(block.get("input", {}))
+                            "arguments": json.dumps(tool_input)
                         }
                     })
         
