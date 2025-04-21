@@ -11,10 +11,8 @@ Ensure you have `uv` installed. You can usually install it via `pip`, `pipx`, or
 Once `uv` is installed, you can install MCPMan directly from the repository (replace `<TAG>` with the desired version or omit for the latest main branch):
 
 ```bash
-uv pip install git+https://github.com/your-username/mcpman.git@<TAG>
+uv pip install git+https://github.com/ericflo/mcpman.git@<TAG>
 ```
-
-_(Note: Replace `your-username/mcpman.git` with the actual repository URL when available)_
 
 ## Core Functionality
 
@@ -175,7 +173,7 @@ Interested in contributing? Here's how to set up your development environment us
 1.  **Clone the repository:**
 
     ```bash
-    git clone https://github.com/your-username/mcpman.git # Replace with actual URL
+    git clone https://github.com/ericflo/mcpman.git
     cd mcpman
     ```
 
