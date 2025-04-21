@@ -369,7 +369,7 @@ def parse_args() -> argparse.Namespace:
         "--max-turns",
         type=int,
         default=2048,
-        help="Maximum number of turns for the agent loop (default: 10).",
+        help="Maximum number of turns for the agent loop (default: 2048).",
     )
     parser.add_argument(
         "-s",
