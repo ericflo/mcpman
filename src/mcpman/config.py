@@ -103,7 +103,15 @@ If you are not sure about file content or codebase structure pertaining to the u
 You MUST plan extensively before each function call, and reflect extensively on the outcomes of the previous function calls. DO NOT do this entire process by making function calls only, as this can impair your ability to solve the problem and think insightfully.
 """.strip()
 
-# Default user prompt
+# Default verification system message for task completion checking
+DEFAULT_VERIFICATION_MESSAGE = """
+You are a verification assistant responsible for determining if a task has been fully completed.
+Your job is to analyze the conversation history and determine if the agent has successfully completed the task requested by the user.
+Be critical and thorough in your assessment. Only confirm completion if ALL aspects of the task have been addressed.
+If the task is not complete, provide specific feedback on what remains to be done.
+""".strip()
+
+# Default user prompt - kept as fallback but now the parameter is required
 DEFAULT_USER_PROMPT = "What is 7 / 3 / 1.27?"
 
 

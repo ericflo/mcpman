@@ -106,10 +106,10 @@ For SSE servers, you need to run the server process separately and provide the U
 
 ## Usage
 
-MCPMan is designed to be run from the command line. The minimum required arguments specify the MCP server configuration, the LLM provider/model, and the initial user prompt.
+MCPMan is designed to be run from the command line. The minimum required arguments specify the MCP server configuration, the LLM implementation/model, and the initial prompt.
 
 ```bash
-mcpman --config <PATH> --provider <NAME> --model <ID> --user "<MESSAGE>"
+mcpman -c <PATH> -i <IMPLEMENTATION> -m <MODEL> -p "<PROMPT>"
 ```
 
 **Example: Simple Invocation (Ollama - Local)**
@@ -117,10 +117,10 @@ mcpman --config <PATH> --provider <NAME> --model <ID> --user "<MESSAGE>"
 This example uses a local Ollama model with just the required flags.
 
 ```bash
-mcpman --config ./mcp-servers.json \
-       --provider ollama \
-       --model gemma3:4b-it-qat \
-       --user "Read the file 'README.md' and summarize its main points."
+mcpman -c ./mcp-servers.json \
+       -i ollama \
+       -m gemma3:4b-it-qat \
+       -p "Read the file 'README.md' and summarize its main points."
 ```
 
 **Example: More Options (OpenAI)**
@@ -128,24 +128,25 @@ mcpman --config ./mcp-servers.json \
 You can add more flags for finer control, like providing a system message or adjusting model parameters.
 
 ```bash
-mcpman --config ./mcp-servers.json \
-       --provider openai \
-       --model gpt-4o \
-       --system "You are a helpful AI assistant. Use tools effectively to answer the user." \
+mcpman -c ./mcp-servers.json \
+       -i openai \
+       -m gpt-4o \
+       -s "You are a helpful AI assistant. Use tools effectively to answer the user." \
        --temperature 0.5 \
-       --user "Check the weather in London and find the top 3 news headlines from Associated Press."
+       -p "Check the weather in London and find the top 3 news headlines from Associated Press."
 ```
 
 **Key Options:**
 
 - `-c, --config <PATH>`: (Required) Path to the JSON file containing MCP server configurations.
-- `-p, --provider <NAME>`: (Required) Name of the LLM provider (e.g., `openai`, `anthropic`, `google`, `ollama`, `lmstudio`).
-- `-m, --model <IDENTIFIER>`: (Required) Model identifier for the chosen provider (e.g., `gpt-4o`, `claude-3-opus-20240229`, `gemma3:12b-it-qat`).
-- `-u, --user <MESSAGE>`: (Required) The initial user message to start the agentic loop.
+- `-i, --impl, --implementation <IMPLEMENTATION>`: (Required) Name of the LLM implementation to use (e.g., `openai`, `anthropic`, `google`, `ollama`, `lmstudio`).
+- `-m, --model <MODEL>`: (Required) Model identifier for the chosen implementation (e.g., `gpt-4o`, `claude-3-opus-20240229`, `gemma3:12b-it-qat`).
+- `-p, --prompt <PROMPT>`: (Required) The initial prompt to start the agentic loop. Can be a message or a path to a file containing the prompt.
 - `-s, --system <MESSAGE>`: (Optional) An initial system message to guide the LLM's behavior.
-- `--base-url <URL>`: (Optional) Custom base URL for providers like Ollama, LMStudio, or other OpenAI-compatible endpoints. Defaults to provider-specific standards (e.g., `http://localhost:11434` for Ollama).
+- `--base-url <URL>`: (Optional) Custom base URL for implementations like Ollama, LMStudio, or other OpenAI-compatible endpoints. Defaults to implementation-specific standards (e.g., `http://localhost:11434` for Ollama).
 - `--temperature <FLOAT>`: (Optional) Sampling temperature for the LLM (e.g., `0.7`).
 - `--max-tokens <INT>`: (Optional) Maximum number of tokens for the LLM response.
+- `--verify [PROMPT]`: (Optional) Enable task verification to ensure the task is complete before finishing. Optionally provide a custom verification prompt or path to a verification prompt file.
 
 _(Note: API keys are typically expected to be configured via environment variables like `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, etc.)_
 

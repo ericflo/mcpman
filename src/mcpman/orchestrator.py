@@ -2,11 +2,12 @@ import json
 import logging
 import asyncio
 import contextlib
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional, Tuple, Union
 
 from .server import Server
 from .llm_client import LLMClient
 from .tools import Tool, sanitize_name
+from .config import DEFAULT_VERIFICATION_MESSAGE
 
 
 async def execute_tool_call(
@@ -164,6 +165,139 @@ async def execute_tool_call(
     }
 
 
+async def verify_task_completion(
+    messages: List[Dict[str, Any]],
+    llm_client: LLMClient,
+    verification_prompt: Optional[str] = None,
+    temperature: float = 0.4  # Lower temperature for verification
+) -> Tuple[bool, str]:
+    """
+    Verify if the agent has completed the task successfully.
+    
+    Args:
+        messages: Conversation history
+        llm_client: LLM client for verification
+        verification_prompt: Custom system message for verification
+        temperature: Temperature for the verification LLM call
+        
+    Returns:
+        Tuple of (is_complete, feedback_message)
+    """
+    # Use default verification message if none provided
+    verification_message = verification_prompt or DEFAULT_VERIFICATION_MESSAGE
+    
+    # Define schema for verify_completion function
+    verification_schema = [
+        {
+            "type": "function",
+            "function": {
+                "name": "verify_completion",
+                "description": "Verify if the task has been fully completed and provide feedback",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "thoughts": {
+                            "type": "string",
+                            "description": "Detailed analysis of the conversation and task completion",
+                        },
+                        "is_complete": {
+                            "type": "boolean",
+                            "description": "Whether the task has been fully completed",
+                        },
+                        "summary": {
+                            "type": "string",
+                            "description": "Summary of what was accomplished",
+                        },
+                        "missing_steps": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of steps or aspects that are not yet complete",
+                        },
+                        "suggestions": {
+                            "type": "string",
+                            "description": "Constructive suggestions for the agent if the task is not complete",
+                        },
+                    },
+                    "required": ["thoughts", "is_complete", "summary"],
+                },
+            },
+        }
+    ]
+    
+    # Create a simplified, serializable version of the messages for verification
+    serializable_messages = []
+    for msg in messages:
+        # Make a shallow copy to avoid modifying the original
+        msg_copy = {}
+        for key, value in msg.items():
+            # Convert complex values to strings for serialization
+            if isinstance(value, (dict, list)):
+                try:
+                    msg_copy[key] = json.dumps(value)
+                except:
+                    msg_copy[key] = str(value)
+            else:
+                msg_copy[key] = value
+        serializable_messages.append(msg_copy)
+    
+    # Format the user request for verification
+    verification_messages = [
+        {"role": "system", "content": verification_message},
+        {
+            "role": "user", 
+            "content": "Below is a conversation between a user and an agent with tools. "
+                       "Evaluate if the agent has fully completed the user's request:\n\n" + 
+                       json.dumps(serializable_messages, indent=2),
+        },
+    ]
+    
+    try:
+        # Call the LLM with the verification tool
+        verification_response = llm_client.get_response(
+            verification_messages,
+            verification_schema,
+            temperature=temperature,
+            tool_choice={"type": "function", "function": {"name": "verify_completion"}}
+        )
+        
+        # Extract the tool call with verification results
+        if "tool_calls" not in verification_response or not verification_response["tool_calls"]:
+            logging.warning("No tool calls in verification response")
+            return False, "Verification failed: Could not determine if task is complete."
+        
+        tool_call = verification_response["tool_calls"][0]
+        if tool_call["function"]["name"] != "verify_completion":
+            logging.warning(f"Unexpected function name: {tool_call['function']['name']}")
+            return False, "Verification failed: Wrong function called."
+        
+        # Parse the verification result
+        verification_result = json.loads(tool_call["function"]["arguments"])
+        
+        # Log the verification analysis
+        logging.info(f"Completion verification analysis:\n{verification_result['thoughts']}")
+        
+        # Extract completion status and feedback
+        is_complete = verification_result.get("is_complete", False)
+        
+        if is_complete:
+            summary = verification_result.get("summary", "Task completed successfully.")
+            logging.info(f"Task completion verified. Summary: {summary}")
+            return True, summary
+        else:
+            # Format feedback for the agent
+            missing_steps = verification_result.get("missing_steps", [])
+            missing_steps_str = ", ".join(missing_steps) if missing_steps else "Unknown missing steps"
+            
+            suggestions = verification_result.get("suggestions", "")
+            feedback = f"The task is not yet complete. Missing: {missing_steps_str}. {suggestions}"
+            logging.info(f"Task is incomplete. Feedback: {feedback}")
+            return False, feedback
+            
+    except Exception as e:
+        logging.error(f"Error during task verification: {e}", exc_info=True)
+        return False, f"Verification error: {str(e)}"
+
+
 async def run_agent(
     prompt: str, 
     servers: List[Server], 
@@ -171,7 +305,9 @@ async def run_agent(
     system_message: str,
     temperature: float = 0.7,
     max_tokens: Optional[int] = None,
-    max_turns: int = 10
+    max_turns: int = 10,
+    verify_completion: bool = False,
+    verification_prompt: Optional[str] = None
 ):
     """
     Run an agent loop to execute a prompt with tools.
@@ -184,6 +320,8 @@ async def run_agent(
         temperature: Sampling temperature for the LLM
         max_tokens: Maximum number of tokens for LLM responses
         max_turns: Maximum number of turns for the agent loop
+        verify_completion: Whether to verify task completion before finishing
+        verification_prompt: Custom system message for verification
     """
     # Prepare tools for the API
     all_tools = []
@@ -274,14 +412,43 @@ async def run_agent(
             
             # Continue to next turn (get next LLM response)
         else:
-            # No tool calls, assume final answer
-            content = assistant_message.get("content")
-            if content:
-                print(f"\nFinal Answer:\n{content}", flush=True)
+            # No tool calls, check for task completion
+            content = assistant_message.get("content", "")
+            
+            # If verification is enabled, check if the task is complete
+            if verify_completion:
+                print(f"\nPotential Final Answer:\n{content}", flush=True)
+                print("\nVerifying task completion...", flush=True)
+                
+                is_complete, feedback = await verify_task_completion(
+                    messages, 
+                    llm_client,
+                    verification_prompt
+                )
+                
+                if is_complete:
+                    # Task is complete, print the feedback as final result
+                    print(f"\nVerification PASSED: {feedback}", flush=True)
+                    break
+                else:
+                    # Task is not complete, continue the conversation with feedback
+                    print(f"\nVerification FAILED: {feedback}", flush=True)
+                    
+                    # Add the feedback as a user message to continue the conversation
+                    messages.append({
+                        "role": "user",
+                        "content": f"Your response is incomplete. {feedback} Please continue working on the task."
+                    })
+                    # Continue to next turn
+                    continue
             else:
-                print("\nFinal Answer: (LLM provided no content)", flush=True)
-                logging.warning(f"Final assistant message had no content: {assistant_message}")
-            break  # Exit loop
+                # No verification, assume final answer
+                if content:
+                    print(f"\nFinal Answer:\n{content}", flush=True)
+                else:
+                    print("\nFinal Answer: (LLM provided no content)", flush=True)
+                    logging.warning(f"Final assistant message had no content: {assistant_message}")
+                break  # Exit loop
     else:
         # Loop completed without breaking (max turns reached)
         print("\nWarning: Maximum turns reached without a final answer.", flush=True)
@@ -294,7 +461,9 @@ async def initialize_and_run(
     llm_client: LLMClient,
     temperature: float = 0.7,
     max_tokens: Optional[int] = None,
-    max_turns: int = 10
+    max_turns: int = 10,
+    verify_completion: bool = False,
+    verification_prompt: Optional[str] = None
 ):
     """
     Initialize servers and run the agent loop.
@@ -307,6 +476,8 @@ async def initialize_and_run(
         temperature: Sampling temperature for the LLM
         max_tokens: Maximum number of tokens for LLM responses
         max_turns: Maximum number of turns for the agent loop
+        verify_completion: Whether to verify task completion before finishing
+        verification_prompt: Custom system message for verification
     """
     from .config import load_server_config
     
@@ -388,7 +559,9 @@ async def initialize_and_run(
                 system_message,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                max_turns=max_turns
+                max_turns=max_turns,
+                verify_completion=verify_completion,
+                verification_prompt=verification_prompt
             )
     
     except Exception as e:

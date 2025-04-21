@@ -34,6 +34,7 @@ class LLMClient:
         tools: Optional[List[Dict[str, Any]]] = None,
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
+        tool_choice: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Get a response message object from the LLM.
@@ -43,6 +44,7 @@ class LLMClient:
             tools: Optional list of tool definitions
             temperature: Sampling temperature for the LLM
             max_tokens: Maximum number of tokens for the response
+            tool_choice: Optional specification for tool selection behavior
             
         Returns:
             Response message object from the LLM
@@ -69,6 +71,10 @@ class LLMClient:
             
         if tools:
             payload["tools"] = tools
+            
+            # Add tool_choice if provided
+            if tool_choice:
+                payload["tool_choice"] = tool_choice
 
         try:
             # Make the API request
