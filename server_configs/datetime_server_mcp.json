@@ -1,13 +1,8 @@
 {
   "mcpServers": {
     "datetime_utils": {
-      "command": "/Users/ericflo/.local/bin/uv",
-      "args": [
-        "run",
-        "/Users/ericflo/Development/mcpman/mcp_servers/datetime_utils.py",
-        "--transport",
-        "stdio"
-      ]
+      "command": "uv",
+      "args": ["run", "/mcp_servers/datetime_utils.py", "--transport", "stdio"]
     }
   }
 }
