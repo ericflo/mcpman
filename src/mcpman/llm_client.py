@@ -141,9 +141,9 @@ def create_llm_client(
     """
     # Log the LLM configuration
     provider_str = provider_name or "custom"
-    logging.info(f"Initializing LLM client for provider: {provider_str}")
-    logging.info(f"Model: {provider_config['model']}")
-    logging.info(f"API URL: {provider_config['url']}")
+    logging.debug(f"Initializing LLM client for provider: {provider_str}")
+    logging.debug(f"Model: {provider_config['model']}")
+    logging.debug(f"API URL: {provider_config['url']}")
     
     # Create and return the client
     return LLMClient(

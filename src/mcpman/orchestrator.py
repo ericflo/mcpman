@@ -2,6 +2,8 @@ import json
 import logging
 import asyncio
 import contextlib
+import datetime
+import time
 from typing import Dict, List, Any, Optional, Tuple, Union
 
 from .server import Server
@@ -93,16 +95,36 @@ async def execute_tool_call(
         flush=True
     )
     
+    # Log to file in structured format
+    logging.info(
+        f"Executing tool: {prefixed_tool_name}", 
+        extra={
+            "event_type": "tool_call",
+            "tool_name": prefixed_tool_name,
+            "original_tool_name": original_tool_name,
+            "server_name": target_server_name,
+            "arguments": arguments,
+            "tool_call_id": tool_call_id
+        }
+    )
+    
     # Initialize result content and execution status
     execution_result_content = f"Error: Tool '{original_tool_name}' execution failed on server '{target_server.name}'."
     tool_found_on_target_server = False
     
-    # Execute the tool
+    # Execute the tool with timing measurements
+    start_time = datetime.datetime.now()
+    execution_start_time = time.time()  # More precise for timing
+    
     try:
         logging.debug(
             f"Executing {original_tool_name} on server {target_server.name} (sanitized: {target_server_name}, prefixed: {prefixed_tool_name})..."
         )
         tool_output = await target_server.execute_tool(original_tool_name, arguments)
+        
+        # Capture execution time
+        execution_end_time = time.time()
+        execution_time_ms = (execution_end_time - execution_start_time) * 1000
         tool_found_on_target_server = True
         
         # Format the result
@@ -154,6 +176,33 @@ async def execute_tool_call(
     print(
         f"<- Tool Response [{prefixed_tool_name}]: {execution_result_content}",
         flush=True,
+    )
+    
+    # Calculate total execution time including processing overhead
+    end_time = datetime.datetime.now()
+    total_duration_ms = (end_time - start_time).total_seconds() * 1000
+    
+    # Get execution time (from the actual tool execution)
+    tool_execution_ms = locals().get('execution_time_ms', 0)  # Get it if defined, 0 otherwise
+    
+    # Log to file in structured format with performance metrics
+    logging.info(
+        f"Tool response received: {prefixed_tool_name}",
+        extra={
+            "event_type": "tool_response",
+            "tool_name": prefixed_tool_name,
+            "original_tool_name": original_tool_name,
+            "server_name": target_server_name,
+            "tool_call_id": tool_call_id,
+            "response": execution_result_content,
+            "success": not execution_result_content.startswith("Error:"),
+            "performance": {
+                "total_duration_ms": round(total_duration_ms),
+                "tool_execution_ms": round(tool_execution_ms),
+                "overhead_ms": round(total_duration_ms - tool_execution_ms)
+            },
+            "execution_timestamp": end_time.isoformat()
+        }
     )
     
     # Return the result message
@@ -273,15 +322,39 @@ async def verify_task_completion(
         # Parse the verification result
         verification_result = json.loads(tool_call["function"]["arguments"])
         
-        # Log the verification analysis
-        logging.info(f"Completion verification analysis:\n{verification_result['thoughts']}")
+        # Create a safely loggable version with a preview of the thoughts
+        thoughts_text = verification_result.get('thoughts', '')
+        thoughts_preview = thoughts_text[:100] + "..." if len(thoughts_text) > 100 else thoughts_text
+        
+        # Log the verification analysis (with a shorter preview in the message)
+        logging.info(
+            f"Completion verification analysis",
+            extra={
+                "event_type": "verification_analysis",
+                "category": "verification",
+                "verification_result": {
+                    "is_complete": verification_result.get("is_complete", False),
+                    "summary": verification_result.get("summary", ""),
+                    "thoughts_preview": thoughts_preview,
+                    "missing_steps_count": len(verification_result.get("missing_steps", [])),
+                    "has_suggestions": bool(verification_result.get("suggestions"))
+                }
+            }
+        )
         
         # Extract completion status and feedback
         is_complete = verification_result.get("is_complete", False)
         
         if is_complete:
             summary = verification_result.get("summary", "Task completed successfully.")
-            logging.info(f"Task completion verified. Summary: {summary}")
+            logging.info(
+                f"Task completion verified. Summary: {summary}",
+                extra={
+                    "event_type": "verification_success",
+                    "category": "verification",
+                    "summary": summary
+                }
+            )
             return True, summary
         else:
             # Format feedback for the agent
@@ -289,6 +362,18 @@ async def verify_task_completion(
             missing_steps_str = ", ".join(missing_steps) if missing_steps else "Unknown missing steps"
             
             suggestions = verification_result.get("suggestions", "")
+            
+            # Log the verification failure details
+            logging.info(
+                f"Verification determined task is incomplete",
+                extra={
+                    "event_type": "verification_failure",
+                    "category": "verification",
+                    "missing_steps": missing_steps,
+                    "missing_steps_str": missing_steps_str,
+                    "has_suggestions": bool(suggestions)
+                }
+            )
             feedback = f"The task is not yet complete. Missing: {missing_steps_str}. {suggestions}"
             logging.info(f"Task is incomplete. Feedback: {feedback}")
             return False, feedback
@@ -342,6 +427,20 @@ async def run_agent(
         {"role": "user", "content": prompt},
     ]
     
+    # Log the initial conversation setup
+    logging.info(
+        "Conversation initialized", 
+        extra={
+            "event_type": "conversation_init",
+            "category": "conversation",
+            "conversation": {
+                "system_message": system_message,
+                "user_prompt": prompt
+            },
+            "message_count": len(messages)
+        }
+    )
+    
     # Get the event loop
     loop = asyncio.get_running_loop()
     
@@ -349,7 +448,19 @@ async def run_agent(
     for turn in range(max_turns):
         logging.debug(f"--- Turn {turn + 1} ---")
         
+        # Log turn start to file
+        logging.info(
+            f"Starting turn {turn + 1}/{max_turns}",
+            extra={
+                "event_type": "turn_start",
+                "turn_number": turn + 1,
+                "max_turns": max_turns,
+                "messages_count": len(messages)
+            }
+        )
+        
         # Get LLM response
+        start_time = datetime.datetime.now()
         assistant_message = await loop.run_in_executor(
             None, 
             lambda: llm_client.get_response(
@@ -358,6 +469,35 @@ async def run_agent(
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
+        )
+        end_time = datetime.datetime.now()
+        elapsed_time = (end_time - start_time).total_seconds()
+        
+        # Log LLM response to file
+        has_tool_calls = "tool_calls" in assistant_message and assistant_message.get("tool_calls") is not None
+        
+        # Create a serializable version of the message for logging
+        # Avoid including 'message' as it conflicts with LogRecord's built-in attribute
+        content = assistant_message.get("content") or ""
+        tool_calls_data = None
+        if has_tool_calls:
+            try:
+                # Convert tool_calls to a serializable format
+                tool_calls_data = json.dumps(assistant_message.get("tool_calls", []))
+            except (TypeError, ValueError):
+                tool_calls_data = str(assistant_message.get("tool_calls", []))
+        
+        logging.info(
+            f"LLM response received (took {elapsed_time:.2f}s)",
+            extra={
+                "event_type": "llm_response",
+                "turn_number": turn + 1,
+                "has_tool_calls": has_tool_calls,
+                "has_content": "content" in assistant_message and assistant_message.get("content") is not None,
+                "response_time_seconds": elapsed_time,
+                "assistant_content": content,
+                "assistant_tool_calls": tool_calls_data
+            }
         )
         
         # Validate assistant message
@@ -373,6 +513,24 @@ async def run_agent(
         
         # Add assistant message to conversation
         messages.append(assistant_message)
+        
+        # Log the assistant message addition with detailed structure
+        logging.info(
+            f"Assistant message added (turn {turn + 1})",
+            extra={
+                "event_type": "message_added",
+                "category": "conversation",
+                "turn_number": turn + 1,
+                "message_role": "assistant",
+                "has_content": "content" in assistant_message and assistant_message.get("content") is not None,
+                "has_tool_calls": "tool_calls" in assistant_message and assistant_message.get("tool_calls") is not None,
+                "content_length": len(assistant_message.get("content") or "") if "content" in assistant_message else 0,
+                "tool_calls_count": len(assistant_message.get("tool_calls", [])) if "tool_calls" in assistant_message else 0,
+                "message_index": len(messages) - 1  # Index of this message in the conversation
+            }
+        )
+        
+        # Also keep the debug log for developers
         logging.debug(f"Added assistant message: {json.dumps(assistant_message, indent=2)}")
         
         # Process tool calls if any
@@ -401,7 +559,30 @@ async def run_agent(
                     })
             
             # Add tool results to conversation
+            starting_message_index = len(messages)
             messages.extend(tool_results)
+            
+            # Log the tool results addition with details
+            logging.info(
+                f"Tool result messages added (turn {turn + 1})",
+                extra={
+                    "event_type": "tool_results_added",
+                    "category": "conversation",
+                    "turn_number": turn + 1,
+                    "tool_results_count": len(tool_results),
+                    "message_indices": list(range(starting_message_index, starting_message_index + len(tool_results))),
+                    "tools_summary": [
+                        {
+                            "tool_name": result.get("name", "unknown"),
+                            "tool_call_id": result.get("tool_call_id", "unknown"),
+                            "success": not str(result.get("content", "")).startswith("Error:") if "content" in result else False
+                        }
+                        for result in tool_results
+                    ]
+                }
+            )
+            
+            # Also keep the debug log for developers
             logging.debug(f"Added {len(tool_results)} tool result message(s).")
             
             # Debug log messages before next LLM call
@@ -429,10 +610,80 @@ async def run_agent(
                 if is_complete:
                     # Task is complete, print the feedback as final result
                     print(f"\nVerification PASSED: {feedback}", flush=True)
+                    
+                    # Create a simplified verification result copy if it's available
+                    verification_summary = {}
+                    if 'verification_result' in locals():
+                        # Extract only the key fields we care about for logging
+                        verification_summary = {
+                            "is_complete": verification_result.get("is_complete", True),
+                            "summary": verification_result.get("summary", ""),
+                            # Only include thoughts if they're not too long
+                            "thoughts_preview": verification_result.get("thoughts", "")[:100] + "..." 
+                                if "thoughts" in verification_result and len(verification_result["thoughts"]) > 100 
+                                else verification_result.get("thoughts", "")
+                        }
+                    
+                    # Log successful verification and completion with full verification details
+                    logging.info(
+                        "Task verification passed",
+                        extra={
+                            "event_type": "task_verification",
+                            "category": "verification",
+                            "turn_number": turn + 1,
+                            "verification": True,
+                            "status": "verified_complete",
+                            "feedback": feedback,
+                            "final_content": content,
+                            "verification_summary": verification_summary,  # Use the safe copy
+                            "total_messages": len(messages),
+                            "completion_time": datetime.datetime.now().isoformat(),
+                            "conversation_summary": {
+                                "total_turns": turn + 1,
+                                "tool_usage_count": sum(1 for m in messages if m.get("role") == "tool"),
+                                "assistant_messages": sum(1 for m in messages if m.get("role") == "assistant"),
+                                "user_messages": sum(1 for m in messages if m.get("role") == "user") 
+                            }
+                        }
+                    )
                     break
                 else:
                     # Task is not complete, continue the conversation with feedback
                     print(f"\nVerification FAILED: {feedback}", flush=True)
+                    # Create a simplified verification result copy if it's available
+                    verification_summary = {}
+                    missing_steps = []
+                    suggestions = ""
+                    
+                    if 'verification_result' in locals():
+                        # Extract only the key fields we care about for logging
+                        verification_summary = {
+                            "is_complete": verification_result.get("is_complete", False),
+                            "summary": verification_result.get("summary", "")
+                        }
+                        missing_steps = verification_result.get("missing_steps", [])
+                        suggestions = verification_result.get("suggestions", "")
+                    
+                    # Log failed verification with detailed diagnostic information
+                    logging.info(
+                        "Task verification failed",
+                        extra={
+                            "event_type": "task_verification",
+                            "category": "verification",
+                            "turn_number": turn + 1,
+                            "verification": True,
+                            "status": "verified_incomplete",
+                            "feedback": feedback,
+                            "verification_summary": verification_summary,
+                            "missing_steps": missing_steps,
+                            "suggestions": suggestions,
+                            "total_messages": len(messages),
+                            "conversation_state": {
+                                "last_assistant_message_index": next((i for i, m in enumerate(messages[::-1]) if m.get("role") == "assistant"), None),
+                                "last_tool_result_index": next((i for i, m in enumerate(messages[::-1]) if m.get("role") == "tool"), None)
+                            }
+                        }
+                    )
                     
                     # Add the feedback as a user message to continue the conversation
                     messages.append({
@@ -445,13 +696,91 @@ async def run_agent(
                 # No verification (explicitly disabled), assume final answer
                 if content:
                     print(f"\nFinal Answer (verification disabled):\n{content}", flush=True)
+                    # Log completion with detailed conversation summary
+                    logging.info(
+                        "Task completed (verification disabled)",
+                        extra={
+                            "event_type": "task_completion",
+                            "category": "completion",
+                            "turn_number": turn + 1,
+                            "verification": False,
+                            "status": "completed",
+                            "final_content": content,
+                            "total_messages": len(messages),
+                            "completion_time": datetime.datetime.now().isoformat(),
+                            "conversation_summary": {
+                                "total_turns": turn + 1,
+                                "tool_usage_count": sum(1 for m in messages if m.get("role") == "tool"),
+                                "assistant_messages": sum(1 for m in messages if m.get("role") == "assistant"),
+                                "user_messages": sum(1 for m in messages if m.get("role") == "user"),
+                                "final_message_length": len(content)
+                            }
+                        }
+                    )
                 else:
                     print("\nFinal Answer (verification disabled): (LLM provided no content)", flush=True)
                     logging.warning(f"Final assistant message had no content: {assistant_message}")
+                    # Log completion with warning and detailed diagnostics
+                    logging.info(
+                        "Task completed with empty response (verification disabled)",
+                        extra={
+                            "event_type": "task_completion",
+                            "category": "completion",
+                            "turn_number": turn + 1,
+                            "verification": False,
+                            "status": "completed_empty",
+                            "final_content": "",
+                            "total_messages": len(messages),
+                            "completion_time": datetime.datetime.now().isoformat(),
+                            "conversation_summary": {
+                                "total_turns": turn + 1,
+                                "tool_usage_count": sum(1 for m in messages if m.get("role") == "tool"),
+                                "assistant_messages": sum(1 for m in messages if m.get("role") == "assistant"),
+                                "user_messages": sum(1 for m in messages if m.get("role") == "user")
+                            },
+                            "last_assistant_message": {
+                                "role": "assistant",
+                                "has_content": "content" in assistant_message,
+                                "has_tool_calls": "tool_calls" in assistant_message and bool(assistant_message.get("tool_calls")),
+                                "raw_message": str(assistant_message)
+                            },
+                            "diagnostic_info": "Assistant returned an empty content field unexpectedly"
+                        }
+                    )
                 break  # Exit loop
     else:
         # Loop completed without breaking (max turns reached)
         print("\nWarning: Maximum turns reached without a final answer.", flush=True)
+        # Log max turns reached with detailed diagnostics
+        logging.warning(
+            "Maximum turns reached without completion",
+            extra={
+                "event_type": "max_turns_reached",
+                "category": "timeout",
+                "max_turns": max_turns,
+                "status": "incomplete",
+                "total_messages": len(messages),
+                "completion_time": datetime.datetime.now().isoformat(),
+                "conversation_summary": {
+                    "total_messages": len(messages),
+                    "tool_usage_count": sum(1 for m in messages if m.get("role") == "tool"),
+                    "assistant_messages": sum(1 for m in messages if m.get("role") == "assistant"),
+                    "user_messages": sum(1 for m in messages if m.get("role") == "user")
+                },
+                "last_messages": [
+                    {
+                        "index": len(messages) - i - 1,
+                        "role": messages[len(messages) - i - 1].get("role", "unknown"),
+                        "has_content": "content" in messages[len(messages) - i - 1] and messages[len(messages) - i - 1].get("content") is not None,
+                        "content_preview": (messages[len(messages) - i - 1].get("content", "")[:100] + "...") 
+                            if "content" in messages[len(messages) - i - 1] and messages[len(messages) - i - 1].get("content") and len(messages[len(messages) - i - 1].get("content") or "") > 100 
+                            else (messages[len(messages) - i - 1].get("content") or "")
+                    }
+                    for i in range(min(3, len(messages)))  # Last 3 messages
+                ],
+                "diagnostic_info": "Agent loop reached maximum turns without producing a final answer or completing verification"
+            }
+        )
 
 
 async def initialize_and_run(
@@ -529,13 +858,18 @@ async def initialize_and_run(
                     # Print server tools
                     try:
                         server_tools = await server.list_tools()
-                        print(f"  Server '{server.name}' initialized with tools:", end="")
-                        if server_tools:
-                            print(", ".join([tool.name for tool in server_tools]))
-                        else:
-                            print("(No tools found)")
+                        # Only log tool details at debug level
+                        logging.debug(f"Server '{server.name}' initialized with {len(server_tools)} tools")
+                        if logging.getLogger().isEnabledFor(logging.DEBUG):
+                            print(f"  Server '{server.name}' initialized with tools:", end="")
+                            if server_tools:
+                                print(", ".join([tool.name for tool in server_tools]))
+                            else:
+                                print("(No tools found)")
                     except Exception as list_tools_e:
-                        print(f"  Server '{server.name}' initialized, but failed to list tools: {list_tools_e}")
+                        # Only print this in debug mode
+                        if logging.getLogger().isEnabledFor(logging.DEBUG):
+                            print(f"  Server '{server.name}' initialized, but failed to list tools: {list_tools_e}")
                         logging.warning(f"Could not list tools for {server.name} after init: {list_tools_e}")
                 
                 except Exception as e:
@@ -550,7 +884,13 @@ async def initialize_and_run(
             
             # Run the agent
             logging.info(f"Running prompt: {user_prompt}")
-            print(f"Running prompt: {user_prompt}")
+            # Only print the full prompt in debug mode
+            if logging.getLogger().isEnabledFor(logging.DEBUG):
+                print(f"Running prompt: {user_prompt}")
+            else:
+                # Print a shorter version for normal operation
+                short_prompt = user_prompt[:50] + "..." if len(user_prompt) > 50 else user_prompt
+                print(f"Processing request: {short_prompt}")
             
             await run_agent(
                 user_prompt, 
