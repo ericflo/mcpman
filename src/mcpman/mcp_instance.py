@@ -45,11 +45,12 @@ DEEPINFRA_DEFAULT_MODEL = "meta-llama/Llama-4-Scout-17B-16E-Instruct"
 # MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "")
 # ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
-SYSTEM_MESSAGE = (
+DEFAULT_SYSTEM_MESSAGE = (
     "You are a helpful assistant that can use tools to answer questions. "
     "Break down complex problems into sequential tool calls if necessary. "
     "When you receive tool results, use them to make the next call or formulate the final answer."
 )
+DEFAULT_PROMPT = "What is 7 / 3 / 1.27?"
 
 PROVIDERS = {
     "openai": {
@@ -390,8 +391,10 @@ async def execute_tool_call(
     }
 
 
-async def run_query(query: str, servers: list[Server], llm_client: LLMClient):
-    """Runs a query, calls tools iteratively, and prints the final answer."""
+async def run_prompt(
+    prompt: str, servers: list[Server], llm_client: LLMClient, system_message: str
+):
+    """Runs a prompt, calls tools iteratively, and prints the final answer."""
 
     # Prepare tools for API
     all_tools = []
@@ -406,8 +409,8 @@ async def run_query(query: str, servers: list[Server], llm_client: LLMClient):
     logging.debug(f"Prepared {len(openai_tools)} tools for the API.")
 
     messages: list[dict[str, Any]] = [
-        {"role": "system", "content": SYSTEM_MESSAGE},
-        {"role": "user", "content": query},
+        {"role": "system", "content": system_message},
+        {"role": "user", "content": prompt},
     ]
 
     loop = asyncio.get_running_loop()
@@ -490,7 +493,7 @@ async def run_query(query: str, servers: list[Server], llm_client: LLMClient):
 
 
 async def main() -> None:
-    """Initialize components and run a single query."""
+    """Initialize components and run a single prompt."""
     logging.basicConfig(
         # level=logging.WARNING,
         level=logging.DEBUG,  # Keep DEBUG for inspecting cleanup
@@ -528,6 +531,17 @@ async def main() -> None:
         "--debug",
         action="store_true",
         help="Enable debug logging.",
+    )
+
+    parser.add_argument(
+        "--system-message",
+        default=DEFAULT_SYSTEM_MESSAGE,
+        help="The system message to send to the LLM.",
+    )
+    parser.add_argument(
+        "--prompt",
+        default=DEFAULT_PROMPT,
+        help="The initial prompt to send to the LLM.",
     )
 
     args = parser.parse_args()
@@ -609,15 +623,16 @@ async def main() -> None:
     # Ensure api_key is a string, default to empty if None
     llm_api_key = llm_api_key or ""
 
-    logger.info(f"Final LLM Configuration:")
-    logger.info(f"  Model: {llm_model_name}")
-    logger.info(f"  API URL: {llm_api_url}")
-    logger.info(
-        f"  API Key: {'*' * 5 + llm_api_key[-4:] if llm_api_key else 'Not Set'}"
-    )  # Mask key in logs
+    # Print essential configuration regardless of log level
+    print("--- LLM Configuration ---")
+    print(f"  Model: {llm_model_name}")
+    print(f"  API URL: {llm_api_url}")
 
     # --- Load Config ---
     config_path = args.config  # Use argument for config path
+    print(f"  Server Config: {config_path}")
+    print("-------------------------")
+    # logger.info(f"Using server config file: {config_path}") # Keep as info log if needed elsewhere
     try:
         with open(config_path, "r") as f:
             server_config = json.load(f)
@@ -666,6 +681,24 @@ async def main() -> None:
             await server.session.initialize()
             logger.info(f"Server {server.name} initialized successfully.")
             initialized_servers.append(server)
+
+            # Print server and its tools
+            try:
+                server_tools = await server.list_tools()
+                print(f"  Server '{server.name}' initialized with tools:")
+                if server_tools:
+                    for tool in server_tools:
+                        print(f"    - {tool.name}")
+                else:
+                    print("      (No tools found)")
+            except Exception as list_tools_e:
+                print(
+                    f"  Server '{server.name}' initialized, but failed to list tools: {list_tools_e}"
+                )
+                logger.warning(
+                    f"Could not list tools for {server.name} after init: {list_tools_e}"
+                )
+
         except Exception as e:
             logger.error(
                 f"Failed to initialize server {server.name}: {e}", exc_info=True
@@ -695,13 +728,16 @@ async def main() -> None:
             logger.error("Server initialization failed. Exiting.")
             return
 
-        query = "What is 7 / 3 / 1.27?"
-        logger.info(f"Running query: {query}")
-        print(f"Running query: {query}")
-        await run_query(query, initialized_servers, llm_client)
+        # Use prompt from arguments
+        prompt = args.prompt
+        system_message = args.system_message
+        logger.info(f"System Message: {system_message}")
+        logger.info(f"Running prompt: {prompt}")
+        print(f"Running prompt: {prompt}")
+        await run_prompt(prompt, initialized_servers, llm_client, system_message)
 
     except Exception as e:
-        logger.error(f"An error occurred during query execution: {e}", exc_info=True)
+        logger.error(f"An error occurred during prompt execution: {e}", exc_info=True)
     finally:
         logger.info("Starting manual cleanup...")
         while entered_sessions:
