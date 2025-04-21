@@ -25,7 +25,7 @@ OLLAMA_API_URL = "http://127.0.0.1:11434/api/generate"
 OLLAMA_DEFAULT_MODEL = "qwen2.5:7b"
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
-OPENROUTER_DEFAULT_MODEL = "deepseek/deepseek-chat-v3-0324"
+OPENROUTER_DEFAULT_MODEL = "google/gemini-2.0-flash-001"
 TOGETHER_API_URL = "https://api.together.xyz/v1/chat/completions"
 TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY", "")
 TOGETHER_DEFAULT_MODEL = "meta-llama/Llama-4-Scout-17B-16E-Instruct"
@@ -33,7 +33,7 @@ GEMINI_API_URL = (
     "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
 )
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_DEFAULT_MODEL = "gemini-2.5-flash-preview-04-17"
+GEMINI_DEFAULT_MODEL = "gemini-2.0-flash-001"
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_DEFAULT_MODEL = "llama-3.3-70b-versatile"
@@ -55,7 +55,7 @@ PROVIDERS = {
     },
     "lmstudio": {
         "url": LMSTUDIO_API_URL,
-        "key": "",
+        "key": "dummy",
         "default_model": LMSTUDIO_DEFAULT_MODEL,
     },
     "ollama": {"url": OLLAMA_API_URL, "key": "", "default_model": OLLAMA_DEFAULT_MODEL},
@@ -685,61 +685,78 @@ async def main() -> None:
     # --- Determine LLM Configuration ---
     # Precedence: CLI args > Environment Vars > Hardcoded defaults
 
-    # 1. Model Name
-    llm_model_name = args.model or os.getenv("LLM_MODEL_NAME", "gpt-4.1-nano")
-
-    # 2. API URL and Key
+    # Determine provider first, then set URL, Key, and potentially Model
     llm_api_url = None
     llm_api_key = None
+    llm_model_name = args.model or os.getenv(
+        "LLM_MODEL_NAME"
+    )  # Get explicit model first
+    selected_provider_name = None
+    provider_default_model = None
 
     if args.provider:
+        selected_provider_name = args.provider
         provider_info = PROVIDERS.get(args.provider)
         if provider_info:
             llm_api_url = provider_info["url"]
-            # Prioritize explicit CLI key, then provider-specific env key, then general env key, then provider default (often empty)
-            provider_env_key_name = f"{args.provider.upper()}_API_KEY"
+            provider_default_model = provider_info["default_model"]
+            # Set model only if not explicitly provided
+            if not llm_model_name:
+                llm_model_name = provider_default_model
+            # Key logic
             llm_api_key = (
                 args.api_key
-                or os.getenv(provider_env_key_name)
-                or os.getenv("LLM_API_KEY")
+                or os.getenv(f"{args.provider.upper()}_API_KEY")
+                or LLM_API_KEY
                 or provider_info["key"]
             )
             logger.info(f"Using provider '{args.provider}'. API URL: {llm_api_url}")
         else:
-            # Should not happen due to choices in argparse, but safety check
             logger.error(f"Invalid provider selected: {args.provider}. Exiting.")
             return
     elif args.api_url:
+        # Custom URL - provider logic doesn't apply directly for model name
+        selected_provider_name = "custom"
         llm_api_url = args.api_url
-        # Prioritize explicit CLI key, then general env key
-        llm_api_key = args.api_key or os.getenv("LLM_API_KEY")
+        llm_api_key = args.api_key or LLM_API_KEY
         if not llm_api_key:
             logger.warning("Using --api-url without --api-key or LLM_API_KEY env var.")
         logger.info(f"Using custom API URL: {llm_api_url}")
+        # If no model name specified with custom URL, we must fall back later
     else:
-        # Fallback to environment variables or defaults for provider/URL/key
+        # Default provider logic
         default_provider_name = os.getenv("LLM_PROVIDER", "openai")
+        selected_provider_name = default_provider_name
         provider_info = PROVIDERS.get(default_provider_name)
         if provider_info:
             llm_api_url = os.getenv("LLM_API_URL") or provider_info["url"]
+            provider_default_model = provider_info["default_model"]
+            # Set model only if not explicitly provided
+            if not llm_model_name:
+                llm_model_name = provider_default_model
+            # Key logic
             provider_env_key_name = f"{default_provider_name.upper()}_API_KEY"
             llm_api_key = (
-                os.getenv("LLM_API_KEY")
-                or os.getenv(provider_env_key_name)
-                or provider_info["key"]
+                LLM_API_KEY or os.getenv(provider_env_key_name) or provider_info["key"]
             )
             logger.info(
                 f"Using default/env provider '{default_provider_name}'. API URL: {llm_api_url}"
             )
         else:
             # Fallback to generic URL/Key if default provider is invalid
+            selected_provider_name = "fallback"
             logger.warning(
                 f"Default provider '{default_provider_name}' not found in config. Falling back to generic LLM_API_URL/LLM_API_KEY."
             )
             llm_api_url = os.getenv(
                 "LLM_API_URL", OPENAI_API_URL
             )  # Provide a final fallback
-            llm_api_key = os.getenv("LLM_API_KEY")
+            llm_api_key = LLM_API_KEY
+            # Cannot determine provider default model here
+
+    if not llm_model_name:
+        logger.error("No model name specified or found for provider.")
+        return
 
     if not llm_api_url:
         logger.error(
@@ -752,6 +769,7 @@ async def main() -> None:
 
     # Print essential configuration regardless of log level
     print("--- LLM Configuration ---")
+    print(f"  Provider: {selected_provider_name}")
     print(f"  Model: {llm_model_name}")
     print(f"  API URL: {llm_api_url}")
 
