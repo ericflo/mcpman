@@ -9,11 +9,12 @@ description = "Model Context Protocol (MCP) Manager - a tool for managing MCP se
 authors = [
     {name = "Eric Florenzano", email = "floguy@gmail.com"},
 ]
+license = {text = "Apache-2.0"}
 readme = "README.md"
 requires-python = ">=3.10"
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
 ]
 dependencies = [
