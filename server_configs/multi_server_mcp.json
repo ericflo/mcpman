@@ -1,14 +1,14 @@
 {
   "mcpServers": {
-    "calculator": {
+    "calc": {
       "command": "uv",
       "args": ["run", "mcp_servers/calculator.py", "--transport", "stdio"]
     },
-    "filesystem_ops": {
+    "fs": {
       "command": "uv",
       "args": ["run", "mcp_servers/filesystem_ops.py", "--transport", "stdio"]
     },
-    "datetime_utils": {
+    "datetime": {
       "command": "uv",
       "args": ["run", "mcp_servers/datetime_utils.py", "--transport", "stdio"]
     }

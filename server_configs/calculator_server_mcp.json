@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "calculator": {
+    "calc": {
       "command": "uv",
       "args": ["run", "mcp_servers/calculator.py", "--transport", "stdio"]
     }

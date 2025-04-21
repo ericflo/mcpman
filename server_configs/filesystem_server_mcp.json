@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "filesystem_ops": {
+    "fs": {
       "command": "uv",
       "args": ["run", "mcp_servers/filesystem_ops.py", "--transport", "stdio"]
     }
