@@ -142,3 +142,4 @@ sample_stuff/*
 # Log files directory
 logs/
 *.jsonl
+server_configs/video_server.json

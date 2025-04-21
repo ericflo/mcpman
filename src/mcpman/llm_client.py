@@ -98,6 +98,28 @@ class LLMClient:
                 logging.debug(
                     f"Received response from LLM: Status {response.status_code}"
                 )
+                
+                # If there's an error, log the response body (super important for debugging)
+                if response.status_code >= 400:
+                    try:
+                        error_json = response.json()
+                        # Print to both stderr and logs for maximum visibility
+                        error_message = f"OpenAI API Error ({response.status_code}): {json.dumps(error_json, indent=2)}"
+                        logging.error(error_message)
+                        import sys
+                        print("\n" + "="*80, file=sys.stderr)
+                        print(error_message, file=sys.stderr)
+                        print("="*80 + "\n", file=sys.stderr)
+                    except Exception as e:
+                        error_text = f"Raw error response: {response.text}"
+                        logging.error(f"Error parsing error response: {e}")
+                        logging.error(error_text)
+                        import sys
+                        print("\n" + "="*80, file=sys.stderr)
+                        print(f"Failed to parse error JSON: {e}", file=sys.stderr)
+                        print(error_text, file=sys.stderr)
+                        print("="*80 + "\n", file=sys.stderr)
+                
                 response.raise_for_status()
 
                 # Parse the response
