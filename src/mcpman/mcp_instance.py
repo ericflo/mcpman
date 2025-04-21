@@ -3,8 +3,7 @@ import os
 import shutil
 import json
 import asyncio
-import re
-from contextlib import AsyncExitStack
+import argparse
 from typing import Any
 
 import httpx
@@ -13,12 +12,95 @@ from mcp.client.stdio import stdio_client
 
 # --- Configuration ---
 # Set via environment variable or default
-LLM_API_KEY = os.getenv("LLM_API_KEY", "api-key-placeholder")
-LLM_API_URL = os.getenv("LLM_API_URL", "http://127.0.0.1:1234/v1/chat/completions")
-LLM_MODEL_NAME = os.getenv("LLM_MODEL_NAME", "qwen2.5-7b-instruct-1m")
-LLM_TEMPERATURE = 0.7
-LLM_MAX_TOKENS = 4096
 CONFIG_PATH = "server_configs/calculator_server_mcp.json"
+
+OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_DEFAULT_MODEL = "gpt-4.1-nano"
+LMSTUDIO_API_URL = "http://127.0.0.1:1234/v1/chat/completions"
+LMSTUDIO_DEFAULT_MODEL = "qwen2.5-7b-instruct-1m"
+OLLAMA_API_URL = "http://127.0.0.1:11434/api/generate"
+OLLAMA_DEFAULT_MODEL = "qwen2.5:7b"
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+OPENROUTER_DEFAULT_MODEL = "deepseek/deepseek-chat-v3-0324"
+TOGETHER_API_URL = "https://api.together.xyz/v1/chat/completions"
+TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY", "")
+TOGETHER_DEFAULT_MODEL = "meta-llama/Llama-4-Scout-17B-16E-Instruct"
+GEMINI_API_URL = (
+    "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+)
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_DEFAULT_MODEL = "gemini-2.5-flash-preview-04-17"
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_DEFAULT_MODEL = "llama-3.3-70b-versatile"
+HYPERBOLIC_API_URL = "https://api.hyperbolic.xyz/v1/chat/completions"
+HYPERBOLIC_API_KEY = os.getenv("HYPERBOLIC_API_KEY", "")
+HYPERBOLIC_DEFAULT_MODEL = "deepseek-ai/DeepSeek-V3-0324"
+DEEPINFRA_API_URL = "https://api.deepinfra.com/v1/openai/chat/completions"
+DEEPINFRA_API_KEY = os.getenv("DEEPINFRA_API_KEY", "")
+DEEPINFRA_DEFAULT_MODEL = "meta-llama/Llama-4-Scout-17B-16E-Instruct"
+
+# MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "")
+# ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+
+SYSTEM_MESSAGE = (
+    "You are a helpful assistant that can use tools to answer questions. "
+    "Break down complex problems into sequential tool calls if necessary. "
+    "When you receive tool results, use them to make the next call or formulate the final answer."
+)
+
+PROVIDERS = {
+    "openai": {
+        "url": OPENAI_API_URL,
+        "key": OPENAI_API_KEY,
+        "default_model": OPENAI_DEFAULT_MODEL,
+    },
+    "lmstudio": {
+        "url": LMSTUDIO_API_URL,
+        "key": "",
+        "default_model": LMSTUDIO_DEFAULT_MODEL,
+    },
+    "ollama": {"url": OLLAMA_API_URL, "key": "", "default_model": OLLAMA_DEFAULT_MODEL},
+    "openrouter": {
+        "url": OPENROUTER_API_URL,
+        "key": OPENROUTER_API_KEY,
+        "default_model": OPENROUTER_DEFAULT_MODEL,
+    },
+    "together": {
+        "url": TOGETHER_API_URL,
+        "key": TOGETHER_API_KEY,
+        "default_model": TOGETHER_DEFAULT_MODEL,
+    },
+    "gemini": {
+        "url": GEMINI_API_URL,
+        "key": GEMINI_API_KEY,
+        "default_model": GEMINI_DEFAULT_MODEL,
+    },
+    "groq": {
+        "url": GROQ_API_URL,
+        "key": GROQ_API_KEY,
+        "default_model": GROQ_DEFAULT_MODEL,
+    },
+    "hyperbolic": {
+        "url": HYPERBOLIC_API_URL,
+        "key": HYPERBOLIC_API_KEY,
+        "default_model": HYPERBOLIC_DEFAULT_MODEL,
+    },
+    "deepinfra": {
+        "url": DEEPINFRA_API_URL,
+        "key": DEEPINFRA_API_KEY,
+        "default_model": DEEPINFRA_DEFAULT_MODEL,
+    },
+    # "mistral": {"url": MISTRAL_API_URL, "key": MISTRAL_API_KEY, "default_model": MISTRAL_DEFAULT_MODEL},
+    # "anthropic": {"url": ANTHROPIC_API_URL, "key": ANTHROPIC_API_KEY, "default_model": ANTHROPIC_DEFAULT_MODEL},
+}
+
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai")
+LLM_API_KEY = os.getenv("LLM_API_KEY", OPENAI_API_KEY)
+LLM_API_URL = os.getenv("LLM_API_URL", OPENAI_API_URL)
+LLM_MODEL_NAME = os.getenv("LLM_MODEL_NAME", "gpt-4.1-nano")
 
 
 class Tool:
@@ -30,10 +112,6 @@ class Tool:
         self.name: str = name
         self.description: str = description
         self.input_schema: dict[str, Any] = input_schema
-
-    def format_for_llm(self) -> str:
-        """Deprecated: Format tool information for old-style LLM prompt."""
-        pass  # No longer needed for OpenAI tool format
 
     def to_openai_schema(self) -> dict[str, Any]:
         """Format the tool definition for the OpenAI API 'tools' parameter."""
@@ -89,7 +167,6 @@ class Server:
         self.session: ClientSession | None = None
         self.read: asyncio.StreamReader | None = None  # Store reader/writer
         self.write: asyncio.StreamWriter | None = None
-        # self.exit_stack: AsyncExitStack = AsyncExitStack() # Removed internal exit stack
 
     async def initialize(
         self,
@@ -113,22 +190,6 @@ class Server:
         # Return the context manager instance, don't enter it here
         return stdio_client(server_params)
 
-        # --- Removed old logic that used self.exit_stack ---
-        # try:
-        #     stdio_transport = await self.exit_stack.enter_async_context(
-        #         stdio_client(server_params)
-        #     )
-        #     read, write = stdio_transport
-        #     session = await self.exit_stack.enter_async_context(
-        #         ClientSession(read, write)
-        #     )
-        #     await session.initialize()
-        #     self.session = session
-        # except Exception as e:
-        #     logging.error(f"Error initializing server {self.name}: {e}")
-        #     # await self.cleanup() # Don't call cleanup here
-        #     raise
-
     async def list_tools(self) -> list[Tool]:  # Return type hint added
         """List available tools from the server."""
         if not self.session:
@@ -149,8 +210,6 @@ class Server:
         self,
         tool_name: str,
         arguments: dict[str, Any],
-        # retries: int = 2, # Retry logic might be better outside this low-level method
-        # delay: float = 1.0,
     ) -> Any:
         """Execute a tool.
         Args:
@@ -165,35 +224,18 @@ class Server:
         if not self.session:
             raise RuntimeError(f"Server {self.name} session not initialized")
 
-        # Removed retry logic - keep it simple for now
-        # attempt = 0
-        # while attempt < retries:
-        #     try:
         logging.debug(f"Executing {tool_name} via MCP session...")
         result = await self.session.call_tool(tool_name, arguments)
         return result
-        # except Exception as e:
-        #     attempt += 1
-        #     logging.warning(
-        #         f"Error executing tool: {e}. Attempt {attempt} of {retries}."
-        #     )
-        #     if attempt < retries:
-        #         logging.info(f"Retrying in {delay} seconds...")
-        #         await asyncio.sleep(delay)
-        #     else:
-        #         logging.error("Max retries reached. Failing.")
-        #         raise
-
-    # Removed cleanup method - managed by AsyncExitStack in main
-    # async def cleanup(self) -> None:
-    #    ...
 
 
 class LLMClient:
     """Manages communication with the LLM provider."""
 
-    def __init__(self, api_key: str) -> None:
+    def __init__(self, api_key: str, api_url: str, model_name: str) -> None:
         self.api_key = api_key
+        self.api_url = api_url
+        self.model_name = model_name
 
     def get_response(
         self, messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None = None
@@ -209,11 +251,7 @@ class LLMClient:
         }
         payload = {
             "messages": messages,
-            "model": LLM_MODEL_NAME,  # Use constant
-            "temperature": LLM_TEMPERATURE,  # Use constant
-            "max_tokens": LLM_MAX_TOKENS,  # Use constant
-            "top_p": 1,
-            "stop": None,
+            "model": self.model_name,
         }
         if tools:
             payload["tools"] = tools
@@ -231,12 +269,10 @@ class LLMClient:
                         )
                 else:
                     logging.info(
-                        f"Sending request to LLM model {LLM_MODEL_NAME}..."
-                    )  # Less verbose info log
+                        f"Sending request to LLM model {self.model_name} at {self.api_url}..."
+                    )
 
-                response = client.post(
-                    LLM_API_URL, headers=headers, json=payload
-                )  # Use constant
+                response = client.post(self.api_url, headers=headers, json=payload)
                 logging.debug(
                     f"Received response from LLM: Status {response.status_code}"
                 )
@@ -255,7 +291,7 @@ class LLMClient:
                 return message
 
         except httpx.RequestError as e:
-            logging.error(f"Error communicating with LLM at {LLM_API_URL}: {e}")
+            logging.error(f"Error communicating with LLM at {self.api_url}: {e}")
             # Return an error-like message object
             return {"role": "assistant", "content": f"Error: Could not reach LLM: {e}"}
         except (KeyError, IndexError, json.JSONDecodeError) as e:
@@ -369,13 +405,8 @@ async def run_query(query: str, servers: list[Server], llm_client: LLMClient):
     openai_tools = [tool.to_openai_schema() for tool in all_tools]
     logging.debug(f"Prepared {len(openai_tools)} tools for the API.")
 
-    system_message = (
-        "You are a helpful assistant that can use tools to answer questions. "
-        "Break down complex problems into sequential tool calls if necessary. "
-        "When you receive tool results, use them to make the next call or formulate the final answer."
-    )
     messages: list[dict[str, Any]] = [
-        {"role": "system", "content": system_message},
+        {"role": "system", "content": SYSTEM_MESSAGE},
         {"role": "user", "content": query},
     ]
 
@@ -467,15 +498,134 @@ async def main() -> None:
     )
     logger = logging.getLogger(__name__)
 
+    # --- Argument Parsing ---
+    parser = argparse.ArgumentParser(description="Run MCPMan with configurable LLM.")
+    parser.add_argument(
+        "--config", default=CONFIG_PATH, help="Path to the server config JSON file."
+    )
+    parser.add_argument(
+        "--model", help="Name of the LLM model to use (overrides environment)."
+    )
+
+    provider_group = parser.add_mutually_exclusive_group()
+    provider_group.add_argument(
+        "--provider",
+        choices=PROVIDERS.keys(),
+        help="Select a pre-configured LLM provider (overrides environment).",
+    )
+    provider_group.add_argument(
+        "--api-url",
+        help="Custom LLM API URL (overrides environment, requires --api-key).",
+    )
+
+    parser.add_argument(
+        "--api-key",
+        help="LLM API Key (overrides environment, use with --api-url or if provider requires it).",
+    )
+
+    # Add debug flag
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug logging.",
+    )
+
+    args = parser.parse_args()
+
+    # --- Configure Logging ---
+    log_level = logging.DEBUG if args.debug else logging.WARNING
+    logging.basicConfig(
+        level=log_level,
+        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+        force=True,  # Force re-configuration if already configured
+    )
+    logger = logging.getLogger(__name__)  # Get logger after configuration
+
+    # --- Determine LLM Configuration ---
+    # Precedence: CLI args > Environment Vars > Hardcoded defaults
+
+    # 1. Model Name
+    llm_model_name = args.model or os.getenv("LLM_MODEL_NAME", "gpt-4.1-nano")
+
+    # 2. API URL and Key
+    llm_api_url = None
+    llm_api_key = None
+
+    if args.provider:
+        provider_info = PROVIDERS.get(args.provider)
+        if provider_info:
+            llm_api_url = provider_info["url"]
+            # Prioritize explicit CLI key, then provider-specific env key, then general env key, then provider default (often empty)
+            provider_env_key_name = f"{args.provider.upper()}_API_KEY"
+            llm_api_key = (
+                args.api_key
+                or os.getenv(provider_env_key_name)
+                or os.getenv("LLM_API_KEY")
+                or provider_info["key"]
+            )
+            logger.info(f"Using provider '{args.provider}'. API URL: {llm_api_url}")
+        else:
+            # Should not happen due to choices in argparse, but safety check
+            logger.error(f"Invalid provider selected: {args.provider}. Exiting.")
+            return
+    elif args.api_url:
+        llm_api_url = args.api_url
+        # Prioritize explicit CLI key, then general env key
+        llm_api_key = args.api_key or os.getenv("LLM_API_KEY")
+        if not llm_api_key:
+            logger.warning("Using --api-url without --api-key or LLM_API_KEY env var.")
+        logger.info(f"Using custom API URL: {llm_api_url}")
+    else:
+        # Fallback to environment variables or defaults for provider/URL/key
+        default_provider_name = os.getenv("LLM_PROVIDER", "openai")
+        provider_info = PROVIDERS.get(default_provider_name)
+        if provider_info:
+            llm_api_url = os.getenv("LLM_API_URL") or provider_info["url"]
+            provider_env_key_name = f"{default_provider_name.upper()}_API_KEY"
+            llm_api_key = (
+                os.getenv("LLM_API_KEY")
+                or os.getenv(provider_env_key_name)
+                or provider_info["key"]
+            )
+            logger.info(
+                f"Using default/env provider '{default_provider_name}'. API URL: {llm_api_url}"
+            )
+        else:
+            # Fallback to generic URL/Key if default provider is invalid
+            logger.warning(
+                f"Default provider '{default_provider_name}' not found in config. Falling back to generic LLM_API_URL/LLM_API_KEY."
+            )
+            llm_api_url = os.getenv(
+                "LLM_API_URL", OPENAI_API_URL
+            )  # Provide a final fallback
+            llm_api_key = os.getenv("LLM_API_KEY")
+
+    if not llm_api_url:
+        logger.error(
+            "Could not determine LLM API URL. Please configure using --provider, --api-url, or environment variables. Exiting."
+        )
+        return
+
+    # Ensure api_key is a string, default to empty if None
+    llm_api_key = llm_api_key or ""
+
+    logger.info(f"Final LLM Configuration:")
+    logger.info(f"  Model: {llm_model_name}")
+    logger.info(f"  API URL: {llm_api_url}")
+    logger.info(
+        f"  API Key: {'*' * 5 + llm_api_key[-4:] if llm_api_key else 'Not Set'}"
+    )  # Mask key in logs
+
     # --- Load Config ---
+    config_path = args.config  # Use argument for config path
     try:
-        with open(CONFIG_PATH, "r") as f:
+        with open(config_path, "r") as f:
             server_config = json.load(f)
     except FileNotFoundError:
-        logger.error(f"Server config file not found: {CONFIG_PATH}")
+        logger.error(f"Server config file not found: {config_path}")
         return
     except json.JSONDecodeError:
-        logger.error(f"Error decoding server config file: {CONFIG_PATH}")
+        logger.error(f"Error decoding server config file: {config_path}")
         return
 
     servers_to_init = [
@@ -486,41 +636,33 @@ async def main() -> None:
         logger.error("No servers defined in the configuration file.")
         return
 
-    llm_api_key = LLM_API_KEY
-    if llm_api_key == "api-key-placeholder":
-        logger.warning(
-            "LLM_API_KEY environment variable not set or is placeholder. Using dummy key."
-        )
-    llm_client = LLMClient(llm_api_key)
+    # Instantiate LLM Client with determined config
+    llm_client = LLMClient(
+        api_key=llm_api_key, api_url=llm_api_url, model_name=llm_model_name
+    )
 
     # --- Initialize Servers Manually ---
     initialized_servers: list[Server] = []
-    # Store context managers and sessions to clean up later
     entered_stdio_cms: list[Any] = []
     entered_sessions: list[ClientSession] = []
-
     init_success = True
+
     for server in servers_to_init:
         stdio_client_cm = None
         session = None
         try:
             logger.debug(f"Initializing server {server.name}...")
-            # 1. Get the stdio_client context manager
             stdio_client_cm = await server.initialize()
-            # 2. Enter its context MANUALLY
             read, write = await stdio_client_cm.__aenter__()
-            entered_stdio_cms.append(stdio_client_cm)  # Track for cleanup
+            entered_stdio_cms.append(stdio_client_cm)
             server.read = read
             server.write = write
             logger.debug(f"stdio client connected for {server.name}.")
 
-            # 3. Create the ClientSession
             session = ClientSession(read, write)
-            # 4. Enter its context MANUALLY
             server.session = await session.__aenter__()
-            entered_sessions.append(session)  # Track for cleanup
+            entered_sessions.append(session)
 
-            # 5. Initialize the session itself
             await server.session.initialize()
             logger.info(f"Server {server.name} initialized successfully.")
             initialized_servers.append(server)
@@ -529,7 +671,6 @@ async def main() -> None:
                 f"Failed to initialize server {server.name}: {e}", exc_info=True
             )
             init_success = False
-            # Need to clean up partially entered contexts for THIS server immediately
             if session in entered_sessions:
                 try:
                     await session.__aexit__(None, None, None)
@@ -546,29 +687,23 @@ async def main() -> None:
                     logger.error(
                         f"Error cleaning up stdio_cm during init failure for {server.name}: {cleanup_e}"
                     )
-            # We won't proceed if any server fails, so break the loop
             break
 
     # --- Main Execution Block ---
     try:
         if not init_success or not initialized_servers:
             logger.error("Server initialization failed. Exiting.")
-            # Cleanup will happen in finally block
             return
 
-        # Run the query only if all servers initialized successfully
-        query = "What is 7 / 3 / 1.27?"  # Using simple query for now
+        query = "What is 7 / 3 / 1.27?"
         logger.info(f"Running query: {query}")
         print(f"Running query: {query}")
         await run_query(query, initialized_servers, llm_client)
 
     except Exception as e:
-        # Catch errors during run_query itself
         logger.error(f"An error occurred during query execution: {e}", exc_info=True)
     finally:
-        # --- Explicit Cleanup ---
         logger.info("Starting manual cleanup...")
-        # Cleanup sessions first, then stdio clients (reverse order of creation)
         while entered_sessions:
             session_to_clean = entered_sessions.pop()
             try:
@@ -588,20 +723,4 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    # Make sure to import necessary modules if not already done
-    import logging
-    import os
-    import shutil
-    import json
-    import asyncio
-    import re  # Needed for markdown stripping in LLMClient if kept
-    from contextlib import AsyncExitStack
-    from typing import Any
-    import httpx  # Needed for LLMClient
-    from mcp import (
-        ClientSession,
-        StdioServerParameters,
-    )  # Assuming these are needed by Server
-    from mcp.client.stdio import stdio_client  # Assuming needed by Server
-
     asyncio.run(main())
