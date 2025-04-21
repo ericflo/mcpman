@@ -12,26 +12,6 @@ import httpx
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-
-# --- Helper Functions ---
-def sanitize_name(name: str) -> str:
-    """Sanitize a name to be a valid identifier (replace non-alphanumeric with _)."""
-    # Replace non-alphanumeric characters with underscores
-    sanitized = re.sub(r"[^a-zA-Z0-9_]", "_", name)
-    # Ensure it doesn't start with a digit (optional, but good practice)
-    if sanitized and sanitized[0].isdigit():
-        sanitized = "_" + sanitized
-    # Replace multiple consecutive underscores with a single one
-    sanitized = re.sub(r"_+", "_", sanitized)
-    # Remove leading/trailing underscores (optional)
-    # sanitized = sanitized.strip('_')
-    # Let's keep them for now to avoid potential empty names or collisions
-    return sanitized
-
-
-# ------------------------
-
-
 # --- Configuration ---
 # Set via environment variable or default
 CONFIG_PATH = "server_configs/calculator_server_mcp.json"
@@ -66,13 +46,6 @@ DEEPINFRA_DEFAULT_MODEL = "meta-llama/Llama-4-Scout-17B-16E-Instruct"
 
 # MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "")
 # ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-
-DEFAULT_SYSTEM_MESSAGE = """
-You are an agent - please keep going until the user's query is completely resolved, before ending your turn and yielding back to the user. Only terminate your turn when you are sure that the problem is solved.
-If you are not sure about file content or codebase structure pertaining to the user's request, use your tools to read files and gather the relevant information: do NOT guess or make up an answer.
-You MUST plan extensively before each function call, and reflect extensively on the outcomes of the previous function calls. DO NOT do this entire process by making function calls only, as this can impair your ability to solve the problem and think insightfully.
-""".strip()
-DEFAULT_PROMPT = "What is 7 / 3 / 1.27?"
 
 PROVIDERS = {
     "openai": {
@@ -124,6 +97,32 @@ LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai")
 LLM_API_KEY = os.getenv("LLM_API_KEY", OPENAI_API_KEY)
 LLM_API_URL = os.getenv("LLM_API_URL", OPENAI_API_URL)
 LLM_MODEL_NAME = os.getenv("LLM_MODEL_NAME", "gpt-4.1-nano")
+
+DEFAULT_SYSTEM_MESSAGE = """
+You are an agent - please keep going until the user's query is completely resolved, before ending your turn and yielding back to the user. Only terminate your turn when you are sure that the problem is solved.
+If you are not sure about file content or codebase structure pertaining to the user's request, use your tools to read files and gather the relevant information: do NOT guess or make up an answer.
+You MUST plan extensively before each function call, and reflect extensively on the outcomes of the previous function calls. DO NOT do this entire process by making function calls only, as this can impair your ability to solve the problem and think insightfully.
+""".strip()
+DEFAULT_PROMPT = "What is 7 / 3 / 1.27?"
+
+
+# --- Helper Functions ---
+def sanitize_name(name: str) -> str:
+    """Sanitize a name to be a valid identifier (replace non-alphanumeric with _)."""
+    # Replace non-alphanumeric characters with underscores
+    sanitized = re.sub(r"[^a-zA-Z0-9_]", "_", name)
+    # Ensure it doesn't start with a digit (optional, but good practice)
+    if sanitized and sanitized[0].isdigit():
+        sanitized = "_" + sanitized
+    # Replace multiple consecutive underscores with a single one
+    sanitized = re.sub(r"_+", "_", sanitized)
+    # Remove leading/trailing underscores (optional)
+    # sanitized = sanitized.strip('_')
+    # Let's keep them for now to avoid potential empty names or collisions
+    return sanitized
+
+
+# ------------------------
 
 
 class Tool:
