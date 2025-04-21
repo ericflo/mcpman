@@ -4,11 +4,33 @@ import shutil
 import json
 import asyncio
 import argparse
+import contextlib
 from typing import Any
+import re
 
 import httpx
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+
+
+# --- Helper Functions ---
+def sanitize_name(name: str) -> str:
+    """Sanitize a name to be a valid identifier (replace non-alphanumeric with _)."""
+    # Replace non-alphanumeric characters with underscores
+    sanitized = re.sub(r"[^a-zA-Z0-9_]", "_", name)
+    # Ensure it doesn't start with a digit (optional, but good practice)
+    if sanitized and sanitized[0].isdigit():
+        sanitized = "_" + sanitized
+    # Replace multiple consecutive underscores with a single one
+    sanitized = re.sub(r"_+", "_", sanitized)
+    # Remove leading/trailing underscores (optional)
+    # sanitized = sanitized.strip('_')
+    # Let's keep them for now to avoid potential empty names or collisions
+    return sanitized
+
+
+# ------------------------
+
 
 # --- Configuration ---
 # Set via environment variable or default
@@ -45,11 +67,11 @@ DEEPINFRA_DEFAULT_MODEL = "meta-llama/Llama-4-Scout-17B-16E-Instruct"
 # MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "")
 # ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
-DEFAULT_SYSTEM_MESSAGE = (
-    "You are a helpful assistant that can use tools to answer questions. "
-    "Break down complex problems into sequential tool calls if necessary. "
-    "When you receive tool results, use them to make the next call or formulate the final answer."
-)
+DEFAULT_SYSTEM_MESSAGE = """
+You are an agent - please keep going until the user's query is completely resolved, before ending your turn and yielding back to the user. Only terminate your turn when you are sure that the problem is solved.
+If you are not sure about file content or codebase structure pertaining to the user's request, use your tools to read files and gather the relevant information: do NOT guess or make up an answer.
+You MUST plan extensively before each function call, and reflect extensively on the outcomes of the previous function calls. DO NOT do this entire process by making function calls only, as this can impair your ability to solve the problem and think insightfully.
+""".strip()
 DEFAULT_PROMPT = "What is 7 / 3 / 1.27?"
 
 PROVIDERS = {
@@ -108,11 +130,16 @@ class Tool:
     """Represents a tool with its properties and formatting."""
 
     def __init__(
-        self, name: str, description: str, input_schema: dict[str, Any]
+        self,
+        name: str,
+        description: str,
+        input_schema: dict[str, Any],
+        original_name: str,
     ) -> None:
-        self.name: str = name
+        self.name: str = name  # This will be the prefixed name (e.g., calculator_add)
         self.description: str = description
         self.input_schema: dict[str, Any] = input_schema
+        self.original_name: str = original_name  # Store the original name (e.g., add)
 
     def to_openai_schema(self) -> dict[str, Any]:
         """Format the tool definition for the OpenAI API 'tools' parameter."""
@@ -166,8 +193,9 @@ class Server:
         self.name: str = name
         self.config: dict[str, Any] = config
         self.session: ClientSession | None = None
-        self.read: asyncio.StreamReader | None = None  # Store reader/writer
+        self.read: asyncio.StreamReader | None = None
         self.write: asyncio.StreamWriter | None = None
+        self.tools: list[Tool] | None = None  # Added to cache tools/schemas
 
     async def initialize(
         self,
@@ -191,21 +219,54 @@ class Server:
         # Return the context manager instance, don't enter it here
         return stdio_client(server_params)
 
-    async def list_tools(self) -> list[Tool]:  # Return type hint added
-        """List available tools from the server."""
+    async def list_tools(self) -> list[Tool]:
+        """List available tools from the server and cache them."""
         if not self.session:
             raise RuntimeError(f"Server {self.name} session not initialized")
+        # Return cached tools if already fetched
+        if self.tools is not None:
+            logging.debug(f"Returning cached tools for {self.name}.")
+            return self.tools
 
+        logging.debug(f"Fetching tools from {self.name}...")
         tools_response = await self.session.list_tools()
-        tools = []
+        fetched_tools = []
         for item in tools_response:
-            # Assuming item[1] are Tool objects from MCP response
             if isinstance(item, tuple) and item[0] == "tools":
-                tools.extend(
-                    Tool(tool.name, tool.description, tool.inputSchema)
+                sanitized_server_name = sanitize_name(self.name)
+                fetched_tools.extend(
+                    Tool(
+                        name=f"{sanitized_server_name}_{tool.name}",  # Prefixed name
+                        description=tool.description,
+                        input_schema=tool.inputSchema,
+                        original_name=tool.name,  # Pass original name explicitly
+                    )
                     for tool in item[1]
                 )
-        return tools
+        self.tools = fetched_tools  # Cache the fetched tools
+        logging.debug(f"Cached {len(self.tools)} tools for {self.name}.")
+        return self.tools
+
+    def get_tool_schema(self, original_tool_name: str) -> dict[str, Any] | None:
+        """Get the input schema for a specific tool by its original name."""
+        if self.tools is None:
+            # This case should ideally not happen if list_tools is called first,
+            # but adding a safeguard.
+            logging.warning(
+                f"Attempted to get schema for {original_tool_name} on {self.name}, but tools list is empty or not fetched yet."
+            )
+            # Potential improvement: Call self.list_tools() here if needed?
+            # For now, assume list_tools was called during setup.
+            return None
+
+        for tool in self.tools:
+            if tool.original_name == original_tool_name:
+                return tool.input_schema
+
+        logging.warning(
+            f"Schema for tool '{original_tool_name}' not found in cached tools for server '{self.name}'."
+        )
+        return None
 
     async def execute_tool(
         self,
@@ -307,87 +368,151 @@ async def execute_tool_call(
     tool_call: dict[str, Any], servers: list[Server]
 ) -> dict[str, Any]:
     """Executes a single tool call and returns the result message."""
-    tool_name = tool_call["function"]["name"]
+    prefixed_tool_name = tool_call["function"]["name"]
     tool_call_id = tool_call["id"]
-    try:
-        arguments = json.loads(tool_call["function"]["arguments"])
-    except json.JSONDecodeError as e:
-        logging.error(f"Error decoding arguments for {tool_name}: {e}")
+
+    # --- Parse Prefixed Name (Improved) ---
+    target_server_name = None
+    original_tool_name = None
+
+    sanitized_server_names = sorted(
+        [sanitize_name(s.name) for s in servers], key=len, reverse=True
+    )
+
+    for s_name in sanitized_server_names:
+        prefix = f"{s_name}_"
+        if prefixed_tool_name.startswith(prefix):
+            target_server_name = s_name
+            original_tool_name = prefixed_tool_name[len(prefix) :]
+            break
+
+    if not target_server_name or not original_tool_name:
+        logging.error(
+            f"Could not parse server and tool name from '{prefixed_tool_name}'"
+        )
         return {
             "role": "tool",
             "tool_call_id": tool_call_id,
-            "name": tool_name,
-            "content": f"Error: Invalid arguments JSON: {e}",
+            "name": prefixed_tool_name,
+            "content": f"Error: Invalid prefixed tool name format '{prefixed_tool_name}'",
         }
 
-    print(f"-> Calling tool: {tool_name}({arguments})", flush=True)
+    # Find the target server
+    target_server: Server | None = next(
+        (s for s in servers if sanitize_name(s.name) == target_server_name), None
+    )
 
-    execution_result_content = f"Error: Tool '{tool_name}' not found on any server."
-    tool_found = False
-    for server in servers:
-        try:
-            logging.debug(f"Executing {tool_name} on server {server.name}...")
-            tool_output = await server.execute_tool(tool_name, arguments)
-            tool_found = True
+    if not target_server:
+        logging.warning(
+            f"Target server '{target_server_name}' for tool '{prefixed_tool_name}' not found."
+        )
+        # Return error if server not found
+        return {
+            "role": "tool",
+            "tool_call_id": tool_call_id,
+            "name": prefixed_tool_name,
+            "content": f"Error: Server '{target_server_name}' (sanitized) not found.",
+        }
 
-            # Simplify result
-            if hasattr(tool_output, "isError") and tool_output.isError:
-                # Handle specific MCP error object
-                error_detail = (
-                    tool_output.content
-                    if hasattr(tool_output, "content")
-                    else "Unknown tool error"
-                )
-                logging.warning(f"Tool '{tool_name}' reported an error: {error_detail}")
+    # --- Get Tool Schema --- REMOVED
+    # --- Parse and Correct Arguments --- REMOVED
+
+    # --- Simple Argument Parsing ---
+    arguments: dict[str, Any] = {}
+    try:
+        arguments_str = tool_call["function"]["arguments"]
+        arguments = json.loads(arguments_str)  # Simple parse
+
+    except json.JSONDecodeError as e:
+        logging.error(f"Error decoding arguments JSON for {prefixed_tool_name}: {e}")
+        return {
+            "role": "tool",
+            "tool_call_id": tool_call_id,
+            "name": prefixed_tool_name,
+            "content": f"Error: Invalid arguments JSON: {e}",
+        }
+    # ---------------------------
+
+    print(
+        f"-> Calling tool: {prefixed_tool_name}({arguments})", flush=True
+    )  # Log parsed args
+
+    execution_result_content = f"Error: Tool '{original_tool_name}' execution failed on server '{target_server.name}'."
+    tool_found_on_target_server = False
+
+    # Execute the tool on the target server
+    try:
+        logging.debug(
+            f"Executing {original_tool_name} on server {target_server.name} (sanitized: {target_server_name}, prefixed: {prefixed_tool_name})..."
+        )
+        # Use original_tool_name and parsed arguments dictionary
+        tool_output = await target_server.execute_tool(original_tool_name, arguments)
+        tool_found_on_target_server = True
+
+        # Simplify result
+        if hasattr(tool_output, "isError") and tool_output.isError:
+            error_detail = (
+                tool_output.content
+                if hasattr(tool_output, "content")
+                else "Unknown tool error"
+            )
+            logging.warning(
+                f"Tool '{prefixed_tool_name}' reported an error: {error_detail}"
+            )
+            # Check if it's an 'unknown tool' error - might indicate mismatch, but treat as error for now
+            if "Unknown tool" in str(error_detail):
+                execution_result_content = f"Error: Tool '{original_tool_name}' not found on server '{target_server_name}'."
+            else:
                 execution_result_content = (
                     f"Error: Tool execution failed: {error_detail}"
                 )
-            elif hasattr(tool_output, "content") and tool_output.content:
-                # Handle successful result with content
-                text_parts = [c.text for c in tool_output.content if hasattr(c, "text")]
-                if text_parts:
-                    execution_result_content = " ".join(text_parts)
-                else:
-                    execution_result_content = json.dumps(
-                        tool_output.content
-                    )  # Fallback to JSON dump of content
-            elif isinstance(tool_output, (str, int, float)):
-                # Handle simple return types
-                execution_result_content = str(tool_output)
+        elif hasattr(tool_output, "content") and tool_output.content:
+            text_parts = [c.text for c in tool_output.content if hasattr(c, "text")]
+            if text_parts:
+                execution_result_content = " ".join(text_parts)
             else:
-                # Fallback for unexpected successful result structure
-                try:
-                    execution_result_content = json.dumps(tool_output)
-                except Exception:
-                    execution_result_content = str(tool_output)
+                execution_result_content = json.dumps(tool_output.content)
+        elif isinstance(tool_output, (str, int, float)):
+            execution_result_content = str(tool_output)
+        else:
+            try:
+                execution_result_content = json.dumps(tool_output)
+            except Exception:
+                execution_result_content = str(tool_output)
 
-            logging.debug(f"Simplified Tool Result Text: {execution_result_content}")
-            break  # Successful execution or handled error, exit server loop
-        except RuntimeError as e:
-            # Error connecting / communicating with the server process
-            logging.warning(
-                f"Runtime error executing {tool_name} on {server.name}: {e}"
-            )
-            # Keep searching on other servers if applicable
-        except Exception as e:
-            # Catch other exceptions during execute_tool call (e.g., validation within MCP client)
-            logging.error(
-                f"Exception executing tool '{tool_name}' on {server.name}: {e}",
-                exc_info=True,
-            )
-            execution_result_content = f"Error: Tool execution failed unexpectedly."
-            tool_found = True  # Mark as found but failed
-            break  # Exit server loop after definite failure on this server
+        logging.debug(f"Simplified Tool Result Text: {execution_result_content}")
 
-    if not tool_found:
-        logging.warning(f"Tool '{tool_name}' not found on any server.")
-        # Content already defaults to a not found error
+    except RuntimeError as e:
+        logging.warning(
+            f"Runtime error executing {prefixed_tool_name} on {target_server.name}: {e}"
+        )
+        execution_result_content = (
+            f"Error: Runtime error contacting server {target_server.name}: {e}"
+        )
+        tool_found_on_target_server = True  # Attempted but failed communication
+    except Exception as e:
+        logging.error(
+            f"Exception executing tool '{prefixed_tool_name}' on {target_server.name}: {e}",
+            exc_info=True,
+        )
+        execution_result_content = (
+            f"Error: Tool execution failed unexpectedly on {target_server.name}."
+        )
+        tool_found_on_target_server = True  # Attempted but failed
+
+    # --- Print the tool response ---
+    # Use prefixed_tool_name for consistency with LLM's view
+    print(
+        f"<- Tool Response [{prefixed_tool_name}]: {execution_result_content}",
+        flush=True,
+    )
+    # -----------------------------
 
     return {
         "role": "tool",
         "tool_call_id": tool_call_id,
-        "name": tool_name,
-        "content": str(execution_result_content),  # Ensure always string
+        "name": prefixed_tool_name,
+        "content": str(execution_result_content),
     }
 
 
@@ -414,7 +539,7 @@ async def run_prompt(
     ]
 
     loop = asyncio.get_running_loop()
-    max_turns = 10  # Add a safety break
+    max_turns = 2048  # Add a safety break
 
     for turn in range(max_turns):
         logging.debug(f"--- Turn {turn + 1} ---")
@@ -494,10 +619,13 @@ async def run_prompt(
 
 async def main() -> None:
     """Initialize components and run a single prompt."""
+    # --- Configure Logging Early ---
+    # Set initial level, may be overridden by args
+    initial_log_level = logging.DEBUG if "--debug" in os.sys.argv else logging.WARNING
     logging.basicConfig(
-        # level=logging.WARNING,
-        level=logging.DEBUG,  # Keep DEBUG for inspecting cleanup
+        level=initial_log_level,
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+        force=True,  # Allow reconfiguring later
     )
     logger = logging.getLogger(__name__)
 
@@ -546,14 +674,14 @@ async def main() -> None:
 
     args = parser.parse_args()
 
-    # --- Configure Logging ---
+    # --- Re-configure Logging based on args ---
     log_level = logging.DEBUG if args.debug else logging.WARNING
     logging.basicConfig(
         level=log_level,
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
-        force=True,  # Force re-configuration if already configured
+        force=True,  # Force re-configuration
     )
-    logger = logging.getLogger(__name__)  # Get logger after configuration
+    logger = logging.getLogger(__name__)  # Get logger again after final configuration
 
     # --- Determine LLM Configuration ---
     # Precedence: CLI args > Environment Vars > Hardcoded defaults
@@ -648,7 +776,7 @@ async def main() -> None:
         for name, srv_config in server_config.get("mcpServers", {}).items()
     ]
     if not servers_to_init:
-        logger.error("No servers defined in the configuration file.")
+        logger.error("No mcpServers defined in the configuration file.")
         return
 
     # Instantiate LLM Client with determined config
@@ -656,107 +784,81 @@ async def main() -> None:
         api_key=llm_api_key, api_url=llm_api_url, model_name=llm_model_name
     )
 
-    # --- Initialize Servers Manually ---
+    # --- Initialize Servers and Run Prompt using AsyncExitStack ---
     initialized_servers: list[Server] = []
-    entered_stdio_cms: list[Any] = []
-    entered_sessions: list[ClientSession] = []
     init_success = True
 
-    for server in servers_to_init:
-        stdio_client_cm = None
-        session = None
-        try:
-            logger.debug(f"Initializing server {server.name}...")
-            stdio_client_cm = await server.initialize()
-            read, write = await stdio_client_cm.__aenter__()
-            entered_stdio_cms.append(stdio_client_cm)
-            server.read = read
-            server.write = write
-            logger.debug(f"stdio client connected for {server.name}.")
-
-            session = ClientSession(read, write)
-            server.session = await session.__aenter__()
-            entered_sessions.append(session)
-
-            await server.session.initialize()
-            logger.info(f"Server {server.name} initialized successfully.")
-            initialized_servers.append(server)
-
-            # Print server and its tools
-            try:
-                server_tools = await server.list_tools()
-                print(f"  Server '{server.name}' initialized with tools:")
-                if server_tools:
-                    for tool in server_tools:
-                        print(f"    - {tool.name}")
-                else:
-                    print("      (No tools found)")
-            except Exception as list_tools_e:
-                print(
-                    f"  Server '{server.name}' initialized, but failed to list tools: {list_tools_e}"
-                )
-                logger.warning(
-                    f"Could not list tools for {server.name} after init: {list_tools_e}"
-                )
-
-        except Exception as e:
-            logger.error(
-                f"Failed to initialize server {server.name}: {e}", exc_info=True
-            )
-            init_success = False
-            if session in entered_sessions:
-                try:
-                    await session.__aexit__(None, None, None)
-                    entered_sessions.remove(session)
-                except Exception as cleanup_e:
-                    logger.error(
-                        f"Error cleaning up session during init failure for {server.name}: {cleanup_e}"
-                    )
-            if stdio_client_cm in entered_stdio_cms:
-                try:
-                    await stdio_client_cm.__aexit__(None, None, None)
-                    entered_stdio_cms.remove(stdio_client_cm)
-                except Exception as cleanup_e:
-                    logger.error(
-                        f"Error cleaning up stdio_cm during init failure for {server.name}: {cleanup_e}"
-                    )
-            break
-
-    # --- Main Execution Block ---
     try:
-        if not init_success or not initialized_servers:
-            logger.error("Server initialization failed. Exiting.")
-            return
+        async with contextlib.AsyncExitStack() as stack:
+            # Initialize servers within the stack
+            for server in servers_to_init:
+                try:
+                    logger.debug(f"Initializing server {server.name}...")
+                    stdio_client_cm = await server.initialize()
+                    # Enter stdio client context manager using the stack
+                    read, write = await stack.enter_async_context(stdio_client_cm)
+                    server.read = read
+                    server.write = write
+                    logger.debug(f"stdio client connected for {server.name}.")
 
-        # Use prompt from arguments
-        prompt = args.prompt
-        system_message = args.system_message
-        logger.info(f"System Message: {system_message}")
-        logger.info(f"Running prompt: {prompt}")
-        print(f"Running prompt: {prompt}")
-        await run_prompt(prompt, initialized_servers, llm_client, system_message)
+                    # Create and enter session context manager using the stack
+                    session = ClientSession(read, write)
+                    server.session = await stack.enter_async_context(session)
+
+                    # Initialize the session itself
+                    await server.session.initialize()
+                    logger.info(f"Server {server.name} initialized successfully.")
+                    initialized_servers.append(server)
+
+                    # Print server and its tools
+                    try:
+                        server_tools = await server.list_tools()
+                        print(
+                            f"  Server '{server.name}' initialized with tools:", end=""
+                        )
+                        if server_tools:
+                            print(", ".join([tool.name for tool in server_tools]))
+                        else:
+                            print("(No tools found)")
+                    except Exception as list_tools_e:
+                        print(
+                            f"  Server '{server.name}' initialized, but failed to list tools: {list_tools_e}"
+                        )
+                        logger.warning(
+                            f"Could not list tools for {server.name} after init: {list_tools_e}"
+                        )
+
+                except Exception as e:
+                    logger.error(
+                        f"Failed to initialize server {server.name}: {e}", exc_info=True
+                    )
+                    init_success = False
+                    # No need for manual cleanup here, AsyncExitStack handles partial failures
+                    break
+
+            # Proceed only if all initializations were successful
+            if not init_success or not initialized_servers:
+                logger.error("Server initialization failed. Exiting.")
+                # Stack will clean up successfully entered contexts
+                return
+
+            # --- Main Execution Block (inside the stack) ---
+            prompt = args.prompt
+            system_message = args.system_message
+            logger.info(f"System Message: {system_message}")
+            logger.info(f"Running prompt: {prompt}")
+            print(f"Running prompt: {prompt}")
+
+            await run_prompt(prompt, initialized_servers, llm_client, system_message)
 
     except Exception as e:
-        logger.error(f"An error occurred during prompt execution: {e}", exc_info=True)
+        logger.error(f"An unexpected error occurred: {e}", exc_info=True)
     finally:
-        logger.info("Starting manual cleanup...")
-        while entered_sessions:
-            session_to_clean = entered_sessions.pop()
-            try:
-                logger.debug(f"Cleaning up session {session_to_clean}...")
-                await session_to_clean.__aexit__(None, None, None)
-            except Exception as e:
-                logger.error(f"Error during session cleanup: {e}", exc_info=True)
-
-        while entered_stdio_cms:
-            stdio_cm_to_clean = entered_stdio_cms.pop()
-            try:
-                logger.debug(f"Cleaning up stdio_client {stdio_cm_to_clean}...")
-                await stdio_cm_to_clean.__aexit__(None, None, None)
-            except Exception as e:
-                logger.error(f"Error during stdio_client cleanup: {e}", exc_info=True)
-        logger.info("Manual cleanup finished.")
+        logger.info("Application finished.")  # Cleanup is now handled by AsyncExitStack
 
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+
+# ------------------------
