@@ -4,6 +4,12 @@ All notable changes to MCPMan will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.3] - 2025-04-22
+
+### Added
+- Added OpenAI (v1.75.0) and Anthropic (v0.49.0) client libraries as explicit dependencies
+- Improved dependency management for better user experience
+
 ## [0.2.2] - 2025-04-22
 
 ### Fixed

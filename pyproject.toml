@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mcpman"
-version = "0.2.2"
+version = "0.2.3"
 description = "Model Context Protocol (MCP) Manager - a tool for managing MCP servers"
 authors = [
     {name = "Eric Florenzano", email = "floguy@gmail.com"},
@@ -21,6 +21,8 @@ dependencies = [
     "httpx>=0.24.0",
     "mcp>=1.6.0",
     "colorama>=0.4.4",
+    "openai==1.75.0",
+    "anthropic==0.49.0",
 ]
 
 [project.optional-dependencies]
