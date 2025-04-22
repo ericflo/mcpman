@@ -4,11 +4,17 @@ All notable changes to MCPMan will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.1] - 2025-04-22
+
 ### Added
+- Added colorama dependency explicitly to requirements
+- Improved compatibility with Claude 3.5 Sonnet model
+- Added standardized content handling across all models
 - Added proper support for Anthropic's Claude models
 - Added documentation for Claude model support in README
 
 ### Fixed
+- Fixed missing dependency handling in packaging
 - Fixed issue with Claude repeatedly calling the same tool by implementing intelligent deduplication that handles:
   - Removing exact duplicate tool calls (same name and arguments)
   - Allowing multiple calls to the same tool with different arguments
