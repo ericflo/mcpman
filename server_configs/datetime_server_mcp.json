@@ -2,7 +2,7 @@
   "mcpServers": {
     "datetime": {
       "command": "uv",
-      "args": ["run", "/mcp_servers/datetime_utils.py", "--transport", "stdio"]
+      "args": ["run", "mcp_servers/datetime_utils.py", "--transport", "stdio"]
     }
   }
 }

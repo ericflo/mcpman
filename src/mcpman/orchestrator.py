@@ -29,7 +29,7 @@ class Orchestrator:
         self.verification_message = default_verification_message
 
     async def _execute_tool(
-        self, tool_call: ToolCall, servers: List[Server]
+        self, tool_call: ToolCall, servers: List[Server], output_only: bool = False
     ) -> ToolResult:
         """Execute a single tool call and return the result."""
         prefixed_tool_name = tool_call.function_name
@@ -85,9 +85,10 @@ class Orchestrator:
             )
 
         # Log the tool call
-        print(
-            f"-> Calling tool: {prefixed_tool_name}({tool_call.arguments})", flush=True
-        )
+        if not output_only:
+            print(
+                f"-> Calling tool: {prefixed_tool_name}({tool_call.arguments})", flush=True
+            )
         logging.info(
             f"Executing tool: {prefixed_tool_name}",
             extra={"event": "tool_call", "tool": prefixed_tool_name},
@@ -144,10 +145,11 @@ class Orchestrator:
             execution_time_ms = (time.time() - start_time) * 1000
 
         # Log the tool response
-        print(
-            f"<- Tool Response [{prefixed_tool_name}]: {execution_result_content}",
-            flush=True,
-        )
+        if not output_only:
+            print(
+                f"<- Tool Response [{prefixed_tool_name}]: {execution_result_content}",
+                flush=True,
+            )
 
         logging.info(
             f"Tool response: {prefixed_tool_name}",
@@ -168,13 +170,13 @@ class Orchestrator:
         )
 
     async def _execute_tools(
-        self, tool_calls: List[ToolCall], servers: List[Server]
+        self, tool_calls: List[ToolCall], servers: List[Server], output_only: bool = False
     ) -> List[ToolResult]:
         """Execute multiple tool calls and return the results."""
         results = []
         for tool_call in tool_calls:
             if tool_call.type == "function":
-                result = await self._execute_tool(tool_call, servers)
+                result = await self._execute_tool(tool_call, servers, output_only)
                 results.append(result)
             else:
                 logging.warning(f"Unsupported tool call type: {tool_call.type}")
@@ -348,6 +350,7 @@ class Orchestrator:
         max_turns: int = 2048,
         verify_completion: bool = False,
         verification_prompt: Optional[str] = None,
+        output_only: bool = False,
     ):
         """Run the agent loop with tools and optional verification."""
         # Initialize conversation
@@ -412,7 +415,7 @@ class Orchestrator:
             if assistant_message.has_tool_calls:
                 # Execute the tool calls
                 tool_results = await self._execute_tools(
-                    assistant_message.tool_calls, servers
+                    assistant_message.tool_calls, servers, output_only
                 )
 
                 # Add tool results to conversation
@@ -434,8 +437,9 @@ class Orchestrator:
 
                 # If verification is enabled
                 if verify_completion:
-                    print(f"\nPotential Final Answer:\n{content}", flush=True)
-                    print("\nVerifying task completion...", flush=True)
+                    if not output_only:
+                        print(f"\nPotential Final Answer:\n{content}", flush=True)
+                        print("\nVerifying task completion...", flush=True)
 
                     is_complete, feedback = await self._verify_completion(
                         conversation, llm_client, verification_prompt
@@ -443,11 +447,16 @@ class Orchestrator:
 
                     if is_complete:
                         # Task is complete
-                        print(f"\nVerification PASSED: {feedback}", flush=True)
+                        if output_only:
+                            # In output-only mode, just print the clean content without headers
+                            print(content.strip())
+                        else:
+                            print(f"\nVerification PASSED: {feedback}", flush=True)
                         break
                     else:
                         # Task is not complete, continue with feedback
-                        print(f"\nVerification FAILED: {feedback}", flush=True)
+                        if not output_only:
+                            print(f"\nVerification FAILED: {feedback}", flush=True)
                         conversation.add_user_message(
                             f"Your response is incomplete. {feedback} Please continue working on the task."
                         )
@@ -455,24 +464,30 @@ class Orchestrator:
                 else:
                     # No verification, assume final answer
                     if content:
-                        print(
-                            f"\nFinal Answer (verification disabled):\n{content}",
-                            flush=True,
-                        )
+                        if output_only:
+                            # In output-only mode, just print the content
+                            print(content.strip())
+                        else:
+                            print(
+                                f"\nFinal Answer (verification disabled):\n{content}",
+                                flush=True,
+                            )
                     else:
-                        print(
-                            "\nFinal Answer (verification disabled): (LLM provided no content)",
-                            flush=True,
-                        )
+                        if not output_only:
+                            print(
+                                "\nFinal Answer (verification disabled): (LLM provided no content)",
+                                flush=True,
+                            )
                         logging.warning(
                             f"Final assistant message had no content: {assistant_message.to_dict()}"
                         )
                     break
         else:
             # Max turns reached
-            print(
-                "\nWarning: Maximum turns reached without a final answer.", flush=True
-            )
+            if not output_only:
+                print(
+                    "\nWarning: Maximum turns reached without a final answer.", flush=True
+                )
             logging.warning("Maximum turns reached without completion")
 
 
@@ -487,6 +502,7 @@ async def initialize_and_run(
     verify_completion: bool = False,
     verification_prompt: Optional[str] = None,
     provider_name: Optional[str] = None,  # Kept for backward compatibility
+    output_only: bool = False
 ):
     """
     Initialize servers and run the agent loop.
@@ -530,7 +546,7 @@ async def initialize_and_run(
             for server in servers_to_init:
                 try:
                     logging.debug(f"Initializing server {server.name}...")
-                    stdio_client_cm = await server.initialize()
+                    stdio_client_cm = await server.initialize(output_only=output_only)
 
                     # Enter stdio client context manager using the stack
                     read, write = await stack.enter_async_context(stdio_client_cm)
@@ -555,7 +571,7 @@ async def initialize_and_run(
                         logging.debug(
                             f"Server '{server.name}' initialized with {len(server_tools)} tools"
                         )
-                        if logging.getLogger().isEnabledFor(logging.DEBUG):
+                        if logging.getLogger().isEnabledFor(logging.DEBUG) and not output_only:
                             print(
                                 f"  Server '{server.name}' initialized with tools:",
                                 end="",
@@ -587,15 +603,18 @@ async def initialize_and_run(
 
             # Run the agent
             logging.info(f"Running prompt: {user_prompt}")
-            # Only print the full prompt in debug mode
-            if logging.getLogger().isEnabledFor(logging.DEBUG):
-                print(f"Running prompt: {user_prompt}")
-            else:
-                # Print a shorter version for normal operation
-                short_prompt = (
-                    user_prompt[:50] + "..." if len(user_prompt) > 50 else user_prompt
-                )
-                print(f"Processing request: {short_prompt}")
+            
+            # Only print if not in output-only mode
+            if not output_only:
+                # Only print the full prompt in debug mode
+                if logging.getLogger().isEnabledFor(logging.DEBUG):
+                    print(f"Running prompt: {user_prompt}")
+                else:
+                    # Print a shorter version for normal operation
+                    short_prompt = (
+                        user_prompt[:50] + "..." if len(user_prompt) > 50 else user_prompt
+                    )
+                    print(f"Processing request: {short_prompt}")
 
             await orchestrator.run_agent(
                 user_prompt,
@@ -607,6 +626,7 @@ async def initialize_and_run(
                 max_turns=max_turns,
                 verify_completion=verify_completion,
                 verification_prompt=verification_prompt,
+                output_only=output_only,
             )
 
     except Exception as e:

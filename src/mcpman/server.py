@@ -36,10 +36,13 @@ class Server:
         self.write: Optional[asyncio.StreamWriter] = None
         self.tools: Optional[List[Tool]] = None  # Cache for discovered tools
 
-    async def initialize(self) -> Any:
+    async def initialize(self, output_only=False) -> Any:
         """
         Prepare server parameters and return the stdio_client context manager.
 
+        Args:
+            output_only: When True, suppress server logging output
+            
         Returns:
             The stdio_client context manager
 
@@ -65,8 +68,15 @@ class Server:
             ),
         )
 
-        # Return the context manager instance
-        return stdio_client(server_params)
+        # Return the context manager instance with appropriate error logging
+        if output_only:
+            # Redirect server output to /dev/null to suppress "Processing request" messages
+            import sys
+            null_file = open(os.devnull, 'w') 
+            return stdio_client(server_params, errlog=null_file)
+        else:
+            # Normal operation with default error logging
+            return stdio_client(server_params)
 
     async def list_tools(self) -> List[Tool]:
         """

@@ -123,6 +123,9 @@ If the task is not complete, provide specific feedback on what remains to be don
 # Default user prompt - kept as fallback but now the parameter is required
 DEFAULT_USER_PROMPT = "What is 7 / 3 / 1.27?"
 
+# Whether to only print the final output
+OUTPUT_ONLY_MODE = False
+
 
 def load_server_config(config_path: str) -> Dict[str, Any]:
     """

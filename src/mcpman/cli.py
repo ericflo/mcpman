@@ -237,7 +237,7 @@ class JsonlLogFormatter(logging.Formatter):
 
 
 def setup_logging(
-    debug: bool = False, log_to_file: bool = True, log_dir: str = "logs"
+    debug: bool = False, log_to_file: bool = True, log_dir: str = "logs", output_only: bool = False
 ) -> str:
     """
     Configure logging for the application.
@@ -246,12 +246,18 @@ def setup_logging(
         debug: Whether to enable debug logging
         log_to_file: Whether to log to a file
         log_dir: Directory to store log files
+        output_only: Whether to only print final output
 
     Returns:
         Path to the log file if created, otherwise None
     """
-    # Set console level to WARNING by default unless debug is enabled
-    console_level = logging.DEBUG if debug else logging.WARNING
+    # Set console level depending on mode
+    if output_only:
+        # In output-only mode, suppress all logging to console
+        console_level = logging.CRITICAL
+    else:
+        # Normal mode - use debug level if requested
+        console_level = logging.DEBUG if debug else logging.WARNING
 
     # Configure root logger - always use at least INFO level to capture all important events
     root_logger = logging.getLogger()
@@ -420,6 +426,11 @@ def parse_args() -> argparse.Namespace:
         default="logs",
         help="Directory to store log files (default: logs).",
     )
+    parser.add_argument(
+        "--output-only",
+        action="store_true",
+        help="Only print the final validated output (useful for piping to files or ETL scripts).",
+    )
 
     return parser.parse_args()
 
@@ -447,6 +458,9 @@ def read_file_if_exists(path_or_content: str) -> str:
 async def main() -> None:
     """
     Main entry point for the application.
+    
+    In normal mode, this displays all the intermediate steps of the process.
+    In output-only mode (--output-only flag), only the final LLM output is shown.
 
     Handles:
     - Argument parsing
@@ -460,7 +474,12 @@ async def main() -> None:
 
     # Setup logging
     log_to_file = not args.no_log_file
-    log_file_path = setup_logging(args.debug, log_to_file, args.log_dir)
+    
+    # Configure logging levels for output-only mode
+    # When in output-only mode, we don't want to suppress print statements,
+    # just logging messages
+        
+    log_file_path = setup_logging(args.debug, log_to_file, args.log_dir, args.output_only)
     logger = logging.getLogger(__name__)
 
     if log_file_path:
@@ -493,14 +512,15 @@ async def main() -> None:
     # Create LLM client
     llm_client = create_llm_client(provider_config, args.impl)
 
-    # Print configuration
-    print("--- LLM Configuration ---")
-    print(f"  Implementation: {args.impl or 'custom'}")
-    print(f"  Model: {provider_config['model']}")
-    print(f"  API URL: {provider_config['url']}")
-    print(f"  Timeout: {provider_config.get('timeout', 180.0)}s")
-    print(f"  Server Config: {args.config}")
-    print("-------------------------")
+    # Print configuration (only if not in output-only mode)
+    if not args.output_only:
+        print("--- LLM Configuration ---")
+        print(f"  Implementation: {args.impl or 'custom'}")
+        print(f"  Model: {provider_config['model']}")
+        print(f"  API URL: {provider_config['url']}")
+        print(f"  Timeout: {provider_config.get('timeout', 180.0)}s")
+        print(f"  Server Config: {args.config}")
+        print("-------------------------")
 
     # Process prompt and verification - check if they're file paths
     user_prompt = read_file_if_exists(args.prompt)
@@ -517,7 +537,7 @@ async def main() -> None:
 
     # Initialize servers and run the agent
     try:
-        # Add provider name to the parameters
+        # Pass through the output_only flag to our implementation
         await initialize_and_run(
             config_path=args.config,
             user_prompt=user_prompt,
@@ -528,7 +548,8 @@ async def main() -> None:
             max_turns=args.max_turns,
             verify_completion=verify_completion,
             verification_prompt=verification_prompt,
-            provider_name=args.impl,  # Pass the provider name
+            provider_name=args.impl,
+            output_only=args.output_only,
         )
     finally:
         # Log completion of execution even if there were exceptions
