@@ -50,6 +50,7 @@ class OpenAICompatClient(BaseLLMClient):
             "messages": messages,
             "model": self.model_name,
             "temperature": temperature,
+            "parallel_tool_calls": False,
         }
 
         # Add optional parameters
