@@ -922,30 +922,19 @@ async def initialize_and_run(
                                     ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
                                     return len(ansi_escape.sub('', s))
                                 
-                                # Create a title with proper centering
-                                # First, we'll define the title without color to calculate proper padding
-                                plain_title = f"Server '{server.name}' initialized with {len(server_tools)} tools:"
-                                
-                                # Calculate exact centering (ignoring ANSI color codes)
-                                usable_box_width = box_width - 4  # -4 for left/right borders and spacing
-                                
-                                # Calculate total padding needed for centering
-                                total_padding = usable_box_width - len(plain_title)
-                                # Divide padding between left and right sides
-                                left_padding = total_padding // 2
-                                right_padding = total_padding - left_padding
-                                
-                                # Ensure minimum padding
-                                left_padding = max(0, left_padding)
-                                right_padding = max(0, right_padding)
-                                
-                                # Now create the colored version of the title
+                                # Use a simple non-centered title line to match the format of the other box items
                                 colored_title = f"{Fore.GREEN}Server '{server.name}'{Style.RESET_ALL} initialized with {Fore.CYAN}{len(server_tools)}{Style.RESET_ALL} tools:"
                                 
-                                # Create the centered title line
-                                left_pad = ' ' * left_padding
-                                right_pad = ' ' * right_padding
-                                title = f"  {Fore.MAGENTA}║{Style.RESET_ALL} {left_pad}{colored_title}{right_pad} {Fore.MAGENTA}║{Style.RESET_ALL}"
+                                # Get the visible length of the colored title (without ANSI codes)
+                                title_visible_len = visible_length(colored_title)
+                                
+                                # Calculate exact padding for right border alignment
+                                # Box width - 4 for borders - 2 for spaces - visible title length
+                                padding_needed = max(0, box_width - 4 - 2 - title_visible_len)
+                                padding = ' ' * padding_needed
+                                
+                                # Create the title line with left-aligned content (like the tool rows)
+                                title = f"  {Fore.MAGENTA}║{Style.RESET_ALL} {colored_title}{padding} {Fore.MAGENTA}║{Style.RESET_ALL}"
                                 
                                 # Show box with tools
                                 print(top_border)
@@ -990,11 +979,12 @@ async def initialize_and_run(
                                     # Calculate the visible length to ensure proper right border alignment
                                     line_visible_len = visible_length(line_content)
                                     
-                                    # Calculate the padding needed for right alignment
-                                    padding_needed = max(0, usable_width - line_visible_len)
+                                    # Calculate the padding needed for right alignment using the same formula as title row
+                                    # Box width - 4 for borders - 2 for spaces - visible content length
+                                    padding_needed = max(0, box_width - 4 - 2 - line_visible_len)
                                     padding = ' ' * padding_needed
                                     
-                                    # Print with proper border alignment
+                                    # Print with proper border alignment, matching exactly the title row format
                                     print(f"  {Fore.MAGENTA}║{Style.RESET_ALL} {line_content}{padding} {Fore.MAGENTA}║{Style.RESET_ALL}")
                                 
                                 print(bottom_border)
