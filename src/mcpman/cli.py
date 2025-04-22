@@ -26,6 +26,10 @@ import datetime
 import pathlib
 from typing import Optional, Dict, Any, Union
 
+# For colorful terminal output
+from colorama import Fore, Style, init
+init(autoreset=True)
+
 from .config import (
     DEFAULT_CONFIG_PATH,
     DEFAULT_SYSTEM_MESSAGE,
@@ -514,13 +518,68 @@ async def main() -> None:
 
     # Print configuration (only if not in output-only mode)
     if not args.output_only:
-        print("--- LLM Configuration ---")
-        print(f"  Implementation: {args.impl or 'custom'}")
-        print(f"  Model: {provider_config['model']}")
-        print(f"  API URL: {provider_config['url']}")
-        print(f"  Timeout: {provider_config.get('timeout', 180.0)}s")
-        print(f"  Server Config: {args.config}")
-        print("-------------------------")
+        
+        # Calculate appropriate box width
+        def get_terminal_width():
+            """Get terminal width with reasonable constraints"""
+            try:
+                width = os.get_terminal_size().columns
+                return min(width, 120)  # Cap at 120 chars for readability 
+            except (OSError, AttributeError):
+                return 80
+                
+        terminal_width = get_terminal_width()
+        
+        # Calculate needed width based on content
+        url_length = len(provider_config['url'])
+        model_length = len(provider_config['model'])
+        config_length = len(args.config)
+        
+        # Find the longest content item 
+        max_content_length = max(url_length, model_length, config_length, 30)
+        
+        # Total width needs: label (15) + content + border/spacing (10)
+        box_width = min(terminal_width - 4, max(max_content_length + 25, 60))
+        
+        # Build box border with calculated width
+        top_border = f"\n{Fore.CYAN}╔{'═' * (box_width - 2)}╗{Style.RESET_ALL}"
+        bottom_border = f"{Fore.CYAN}╚{'═' * (box_width - 2)}╝{Style.RESET_ALL}\n"
+        
+        # Create title with centering
+        title = "LLM CONFIGURATION"
+        padding_each_side = (box_width - len(title) - 2) // 2
+        title_line = f"{Fore.CYAN}║{' ' * padding_each_side}{Fore.YELLOW}{title}{Style.RESET_ALL}{' ' * padding_each_side}{Fore.CYAN}║{Style.RESET_ALL}"
+        if (box_width - len(title) - 2) % 2 != 0:  # Handle odd padding
+            title_line = f"{Fore.CYAN}║{' ' * padding_each_side}{Fore.YELLOW}{title}{Style.RESET_ALL}{' ' * (padding_each_side + 1)}{Fore.CYAN}║{Style.RESET_ALL}"
+        
+        # Calculate width for content formatting
+        content_width = box_width - 24  # Allow for label and spacing
+        
+        # Handle potential truncation of long values
+        def format_value(value, max_width):
+            if len(value) > max_width:
+                return value[:max_width-3] + "..."
+            return value
+        
+        # Print the box
+        print(top_border)
+        print(title_line)
+        print(f"{Fore.CYAN}╠{'═' * (box_width - 2)}╣{Style.RESET_ALL}")
+        
+        # Format and print each row with consistent alignment
+        impl_val = format_value(args.impl or 'custom', content_width)
+        model_val = format_value(provider_config['model'], content_width)
+        url_val = format_value(provider_config['url'], content_width)
+        timeout_str = f"{provider_config.get('timeout', 180.0)}s"
+        config_val = format_value(args.config, content_width)
+        
+        print(f"{Fore.CYAN}║{Style.RESET_ALL} {Fore.GREEN}Implementation:{Style.RESET_ALL} {Fore.WHITE}{impl_val:<{content_width}}{Style.RESET_ALL} {Fore.CYAN}║{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}║{Style.RESET_ALL} {Fore.GREEN}Model:{Style.RESET_ALL}         {Fore.WHITE}{model_val:<{content_width}}{Style.RESET_ALL} {Fore.CYAN}║{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}║{Style.RESET_ALL} {Fore.GREEN}API URL:{Style.RESET_ALL}       {Fore.WHITE}{url_val:<{content_width}}{Style.RESET_ALL} {Fore.CYAN}║{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}║{Style.RESET_ALL} {Fore.GREEN}Timeout:{Style.RESET_ALL}       {Fore.WHITE}{timeout_str:<{content_width}}{Style.RESET_ALL} {Fore.CYAN}║{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}║{Style.RESET_ALL} {Fore.GREEN}Server Config:{Style.RESET_ALL} {Fore.WHITE}{config_val:<{content_width}}{Style.RESET_ALL} {Fore.CYAN}║{Style.RESET_ALL}")
+        
+        print(bottom_border)
 
     # Process prompt and verification - check if they're file paths
     user_prompt = read_file_if_exists(args.prompt)
