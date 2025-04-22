@@ -198,48 +198,52 @@ def draw_box(title, content, style=BoxStyle.STANDARD, width=None, indent=0):
     if 'indent' in style:
         box_indent = " " * style['indent']
     
-    # Extract style elements
+    # Extract style elements with proper color formatting
     color = style['color']
     top_left = f"{color}{style['top_left']}{Style.RESET_ALL}"
     top_right = f"{color}{style['top_right']}{Style.RESET_ALL}"
     bottom_left = f"{color}{style['bottom_left']}{Style.RESET_ALL}"
     bottom_right = f"{color}{style['bottom_right']}{Style.RESET_ALL}"
-    horizontal = f"{color}{style['horizontal']}{Style.RESET_ALL}"
+    horizontal = f"{color}{style['horizontal']}"  # No reset to allow continuous lines
     vertical = f"{color}{style['vertical']}{Style.RESET_ALL}"
     left_t = f"{color}{style['left_t']}{Style.RESET_ALL}"
     right_t = f"{color}{style['right_t']}{Style.RESET_ALL}"
     
-    # Create the content width (space inside the box)
-    content_width = width - 4  # -4 for borders and spaces
+    # Calculate usable width inside the box (between borders)
+    content_width = width - 4  # -4 for borders and padding (left border, space, content, space, right border)
     
-    # Create the top border
-    top_border = f"{box_indent}{top_left}{horizontal * (width - 2)}{top_right}"
+    # Create the horizontal lines with exact width
+    horizontal_line = horizontal * content_width
+    top_border = f"{box_indent}{color}{style['top_left']}{horizontal_line}{style['top_right']}{Style.RESET_ALL}"
+    bottom_border = f"{box_indent}{color}{style['bottom_left']}{horizontal_line}{style['bottom_right']}{Style.RESET_ALL}"
     
-    # Create the title line with proper centering
+    # Create title section if provided
     if title:
-        # Calculate padding for exact centering
-        title_len = len(title)
-        # Total padding = width - 2 (for left/right borders) - title length
-        padding_total = width - 2 - title_len
+        # Create colored title
+        colored_title = f"{Fore.WHITE}{title}{Style.RESET_ALL}"
+        title_visible_len = visible_length(colored_title)
         
-        # Split padding evenly between left and right, handling odd-length padding
+        # Calculate padding for exact centering
+        padding_total = content_width - title_visible_len
         left_padding = padding_total // 2
         right_padding = padding_total - left_padding
         
-        # Ensure minimum padding
-        left_padding = max(1, left_padding)
-        right_padding = max(1, right_padding)
+        # Format the title line with exact centering
+        title_line = (
+            f"{box_indent}{color}{style['vertical']}{Style.RESET_ALL}"
+            f"{' ' * left_padding}{colored_title}{' ' * right_padding}"
+            f"{color}{style['vertical']}{Style.RESET_ALL}"
+        )
         
-        # Create the title line with colored title and precise padding
-        title_line = f"{box_indent}{vertical}{' ' * left_padding}{Fore.WHITE}{title}{Style.RESET_ALL}{' ' * right_padding}{vertical}"
-        separator = f"{box_indent}{left_t}{horizontal * (width - 2)}{right_t}"
+        # Create separator line with exact width
+        separator_line = f"{box_indent}{color}{style['left_t']}{horizontal_line}{style['right_t']}{Style.RESET_ALL}"
     else:
         title_line = None
-        separator = None
+        separator_line = None
     
-    # Process content
+    # Process and format content
     if isinstance(content, str):
-        # Wrap text content
+        # Wrap text content into paragraphs with proper width
         content_lines = format_paragraphs(content, width=content_width)
     else:
         # Already a list of lines
@@ -248,32 +252,33 @@ def draw_box(title, content, style=BoxStyle.STANDARD, width=None, indent=0):
     # Format each content line with proper alignment
     formatted_lines = []
     for line in content_lines:
-        # Clean up the line
+        # Clean up the line (remove trailing whitespace)
         clean_line = line.rstrip()
         
-        # Format with color
+        # Add color to content
         colored_line = f"{Fore.WHITE}{clean_line}{Style.RESET_ALL}"
         
-        # Calculate padding for right alignment
-        line_visible_len = visible_length(colored_line)
-        # Calculate exact padding needed for proper right border alignment
-        # We need width - 4 to account for: left border, space, content, padding, space, right border
-        padding_needed = max(0, width - 4 - line_visible_len)
-        padding = ' ' * padding_needed
+        # Calculate the visible length (excluding ANSI codes)
+        visible_len = visible_length(colored_line)
         
-        # Create the formatted line with correct padding
-        formatted_line = f"{box_indent}{vertical} {colored_line}{padding} {vertical}"
+        # Calculate exact padding for right border alignment
+        right_padding = content_width - visible_len
+        padding = ' ' * max(0, right_padding)
+        
+        # Format with precise alignment - content should be aligned with exact right border
+        formatted_line = (
+            f"{box_indent}{color}{style['vertical']}{Style.RESET_ALL}"
+            f"{colored_line}{padding}"
+            f"{color}{style['vertical']}{Style.RESET_ALL}"
+        )
         formatted_lines.append(formatted_line)
     
-    # Create the bottom border
-    bottom_border = f"{box_indent}{bottom_left}{horizontal * (width - 2)}{bottom_right}"
-    
-    # Assemble all lines
+    # Assemble the complete box with all elements
     result = [top_border]
     if title_line:
         result.append(title_line)
-    if separator:
-        result.append(separator)
+    if separator_line:
+        result.append(separator_line)
     result.extend(formatted_lines)
     result.append(bottom_border)
     
@@ -433,45 +438,55 @@ def format_tool_list(server_name, tools, indent=2):
     tool_names = [tool.name for tool in tools]
     max_name_len = max(len(name) for name in tool_names) if tool_names else 0
     
-    # Determine box width - ensure it's sufficient for content and tool names
-    min_width = max_name_len + 20
-    title_min_width = len(server_name) + 45
-    box_width = min(terminal_width - indent - 4, max(min_width, title_min_width))
+    # Title text (uncolored) for width calculation
+    plain_title = f"Server '{server_name}' initialized with {len(tools)} tools:"
     
-    # Format tools for display - each tool on its own line with arrow indicator
-    formatted_tools = []
-    for name in tool_names:
-        # Add color formatting but maintain proper alignment
-        formatted_tools.append(f"{Fore.CYAN}▸ {Fore.WHITE}{name}{Style.RESET_ALL}")
+    # Determine minimum width needed for content
+    min_width = max(max_name_len + 10, len(plain_title) + 4)
+    # Cap at terminal width minus indentation and some margin
+    box_width = min(terminal_width - indent - 4, max(min_width, 60))
     
-    # Create box parts with uniform styling
-    top_border = f"{' ' * indent}{Fore.MAGENTA}╔{'═' * (box_width - 4)}╗{Style.RESET_ALL}"
-    bottom_border = f"{' ' * indent}{Fore.MAGENTA}╚{'═' * (box_width - 4)}╝{Style.RESET_ALL}"
+    # Calculate usable width inside the box (between borders)
+    content_width = box_width - 4  # -4 for left border, space, space, right border
     
-    # Create the title with consistent alignment to match the tool rows
-    # Use the exact same horizontal spacing for the title row
+    # Create the box decorations
+    horizontal_line = '═' * content_width
+    top_border = f"{' ' * indent}{Fore.MAGENTA}╔{horizontal_line}╗{Style.RESET_ALL}"
+    bottom_border = f"{' ' * indent}{Fore.MAGENTA}╚{horizontal_line}╝{Style.RESET_ALL}"
+    separator = f"{' ' * indent}{Fore.MAGENTA}╠{horizontal_line}╣{Style.RESET_ALL}"
+    
+    # Create the title with proper centering
     colored_title = f"{Fore.GREEN}Server '{server_name}'{Style.RESET_ALL} initialized with {Fore.CYAN}{len(tools)}{Style.RESET_ALL} tools:"
-    title_visible_len = visible_length(colored_title)
     
-    # Calculate exact padding for right border alignment
-    padding_needed = max(0, box_width - 4 - title_visible_len)
-    padding = ' ' * padding_needed
-    title_line = f"{' ' * indent}{Fore.MAGENTA}║{Style.RESET_ALL} {colored_title}{padding} {Fore.MAGENTA}║{Style.RESET_ALL}"
+    # Center the title
+    title_visible_length = visible_length(colored_title)
+    padding_total = content_width - title_visible_length
+    left_padding = padding_total // 2
+    right_padding = padding_total - left_padding
     
-    # Create separator line with exact width matching top/bottom borders
-    separator = f"{' ' * indent}{Fore.MAGENTA}╠{'═' * (box_width - 4)}╣{Style.RESET_ALL}"
+    # Format properly aligned title line with exact centered positioning
+    title_line = (
+        f"{' ' * indent}{Fore.MAGENTA}║{Style.RESET_ALL}"
+        f"{' ' * left_padding}{colored_title}{' ' * right_padding}"
+        f"{Fore.MAGENTA}║{Style.RESET_ALL}"
+    )
     
-    # Format each tool line with proper padding
+    # Format each tool with proper spacing and consistent alignment
     content_lines = []
-    for tool in formatted_tools:
-        tool_visible_len = visible_length(tool)
-        # Calculate padding needed for right border alignment
-        padding_needed = max(0, box_width - 4 - tool_visible_len)
-        padding = ' ' * padding_needed
-        line = f"{' ' * indent}{Fore.MAGENTA}║{Style.RESET_ALL} {tool}{padding} {Fore.MAGENTA}║{Style.RESET_ALL}"
+    for name in tool_names:
+        # Create the tool line with arrow indicator
+        tool_display = f"{Fore.CYAN}▸ {Fore.WHITE}{name}{Style.RESET_ALL}"
+        tool_visible_len = visible_length(tool_display)
+        
+        # Calculate right padding exactly
+        right_padding = content_width - tool_visible_len
+        padding = ' ' * max(0, right_padding)
+        
+        # Format with precise alignment
+        line = f"{' ' * indent}{Fore.MAGENTA}║{Style.RESET_ALL}{tool_display}{padding}{Fore.MAGENTA}║{Style.RESET_ALL}"
         content_lines.append(line)
     
-    # Assemble the full box in order
+    # Assemble the full box with perfect alignment
     lines = [top_border, title_line, separator] + content_lines + [bottom_border]
     
     return lines
@@ -503,6 +518,44 @@ def format_processing_step(step):
         Formatted processing step string
     """
     return f"{Fore.BLUE}■ {Fore.CYAN}{step}...{Style.RESET_ALL}"
+
+def format_short_prompt(prompt, max_length=70):
+    """
+    Format a short prompt display for regular mode (not debug).
+    
+    Args:
+        prompt: The user prompt to display
+        max_length: Maximum length to display before truncating
+        
+    Returns:
+        List with two lines for display
+    """
+    # Clean and normalize the prompt
+    clean_prompt = normalize_text(prompt)
+    
+    # Truncate if needed
+    if len(clean_prompt) > max_length:
+        short_prompt = clean_prompt[:max_length-3] + "..."
+    else:
+        short_prompt = clean_prompt
+    
+    # Format with nice styling
+    header = f"{Fore.CYAN}┌─{Style.RESET_ALL} {Fore.YELLOW}Processing request:{Style.RESET_ALL}"
+    detail = f"{Fore.CYAN}└─►{Style.RESET_ALL} {Fore.WHITE}{short_prompt}{Style.RESET_ALL}"
+    
+    return [header, detail]
+
+def print_short_prompt(prompt, max_length=70):
+    """
+    Print a short prompt display for regular mode.
+    
+    Args:
+        prompt: The user prompt to display
+        max_length: Maximum length to display before truncating
+    """
+    lines = format_short_prompt(prompt, max_length)
+    for line in lines:
+        print(line)
 
 def format_value(value, max_width):
     """

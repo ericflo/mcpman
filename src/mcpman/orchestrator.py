@@ -23,7 +23,8 @@ from .models import Conversation, Message, ToolCall, ToolResult
 from .formatting import (
     format_tool_call, format_tool_response, format_llm_response,
     format_verification_result, format_processing_step, format_tool_list,
-    ProgressSpinner, normalize_text, get_terminal_width
+    ProgressSpinner, normalize_text, get_terminal_width, print_box, 
+    print_short_prompt, BoxStyle
 )
 
 
@@ -646,25 +647,10 @@ async def initialize_and_run(
                 # Only print the full prompt in debug mode
                 if logging.getLogger().isEnabledFor(logging.DEBUG):
                     # Use the consolidated formatting module to display the prompt in a nice box
-                    from .formatting import BoxStyle, print_box
                     print_box("Running prompt", user_prompt, style=BoxStyle.PROMPT)
                 else:
-                    # Simple formatting for normal mode
-                    from colorama import Fore, Style
-                    
-                    # Use the centralized text normalization function
-                    clean_prompt = normalize_text(user_prompt)
-                    
-                    # Create a truncated version for display
-                    max_display_len = 70
-                    if len(clean_prompt) > max_display_len:
-                        short_prompt = clean_prompt[:max_display_len-3] + "..."
-                    else:
-                        short_prompt = clean_prompt
-                    
-                    # Print with nice formatting
-                    print(f"{Fore.CYAN}┌─{Style.RESET_ALL} {Fore.YELLOW}Processing request:{Style.RESET_ALL}")
-                    print(f"{Fore.CYAN}└─►{Style.RESET_ALL} {Fore.WHITE}{short_prompt}{Style.RESET_ALL}")
+                    # Use the centralized formatting for short prompt display
+                    print_short_prompt(user_prompt)
 
             await orchestrator.run_agent(
                 user_prompt,
