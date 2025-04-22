@@ -378,6 +378,32 @@ def format_tool_response(name, response):
     # Format the final response
     return f"{prefix}{color}{display_resp}{Style.RESET_ALL}"
 
+def format_llm_response(content, is_final=False):
+    """
+    Format an LLM response with proper indentation and wrapping.
+    
+    Args:
+        content: The LLM response content
+        is_final: Whether this is a final answer (vs potential answer)
+        
+    Returns:
+        Formatted LLM response string with box
+    """
+    # Normalize the content text
+    clean_content = normalize_text(content)
+    
+    # Determine the appropriate box style
+    style = BoxStyle.SUCCESS if is_final else BoxStyle.LIGHT
+    
+    # Create the title based on whether it's a final answer
+    title = "FINAL ANSWER" if is_final else "POTENTIAL ANSWER"
+    
+    # Use the box drawing function to create the full boxed content
+    box_lines = draw_box(title, clean_content, style=style)
+    
+    # Join and return the complete box
+    return '\n'.join(box_lines)
+
 def format_tool_list(server_name, tools, indent=2):
     """
     Format a list of tools in a box.
