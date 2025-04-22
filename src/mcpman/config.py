@@ -11,6 +11,13 @@ OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_DEFAULT_MODEL = "gpt-4.1-nano"
 
+# OpenAI Responses API configuration (new API)
+OPENAI_RESPONSES_API_URL = (
+    "https://api.openai.com/v1"  # Base URL, not endpoint-specific
+)
+OPENAI_RESPONSES_API_KEY = os.getenv("OPENAI_API_KEY", "")  # Same key as regular OpenAI
+OPENAI_RESPONSES_DEFAULT_MODEL = "o4-mini"  # Default to o4-mini as requested
+
 ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 ANTHROPIC_DEFAULT_MODEL = "claude-3-7-sonnet-20250219"
@@ -29,7 +36,9 @@ TOGETHER_API_URL = "https://api.together.xyz/v1/chat/completions"
 TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY", "")
 TOGETHER_DEFAULT_MODEL = "meta-llama/Llama-4-Scout-17B-16E-Instruct"
 
-GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+GEMINI_API_URL = (
+    "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_DEFAULT_MODEL = "gemini-2.0-flash-001"
 
@@ -52,6 +61,11 @@ PROVIDERS = {
         "key": OPENAI_API_KEY,
         "default_model": OPENAI_DEFAULT_MODEL,
     },
+    "openai_responses": {
+        "url": OPENAI_RESPONSES_API_URL,
+        "key": OPENAI_RESPONSES_API_KEY,
+        "default_model": OPENAI_RESPONSES_DEFAULT_MODEL,
+    },
     "anthropic": {
         "url": ANTHROPIC_API_URL,
         "key": ANTHROPIC_API_KEY,
@@ -62,11 +76,7 @@ PROVIDERS = {
         "key": "dummy",
         "default_model": LMSTUDIO_DEFAULT_MODEL,
     },
-    "ollama": {
-        "url": OLLAMA_API_URL,
-        "key": "",
-        "default_model": OLLAMA_DEFAULT_MODEL
-    },
+    "ollama": {"url": OLLAMA_API_URL, "key": "", "default_model": OLLAMA_DEFAULT_MODEL},
     "openrouter": {
         "url": OPENROUTER_API_URL,
         "key": OPENROUTER_API_KEY,
@@ -130,13 +140,13 @@ OUTPUT_ONLY_MODE = False
 def load_server_config(config_path: str) -> Dict[str, Any]:
     """
     Load and parse the server configuration from the specified JSON file.
-    
+
     Args:
         config_path: Path to the JSON configuration file
-        
+
     Returns:
         Dictionary with server configurations
-        
+
     Raises:
         FileNotFoundError: If the config file doesn't exist
         json.JSONDecodeError: If the config file isn't valid JSON
@@ -144,12 +154,12 @@ def load_server_config(config_path: str) -> Dict[str, Any]:
     try:
         with open(config_path, "r") as f:
             server_config = json.load(f)
-        
+
         # Basic validation that mcpServers key exists
         if "mcpServers" not in server_config:
             logging.warning("No 'mcpServers' section found in config file")
             server_config["mcpServers"] = {}
-            
+
         return server_config
     except FileNotFoundError:
         logging.error(f"Server config file not found: {config_path}")
@@ -168,14 +178,14 @@ def get_llm_configuration(
 ) -> Dict[str, str]:
     """
     Determine the LLM configuration based on provided parameters and environment variables.
-    
+
     Args:
         provider_name: Name of the LLM provider (e.g., "openai", "ollama")
         api_url: Custom API URL for the LLM
         api_key: API key for the LLM
         model_name: Name of the model to use
         timeout: Request timeout in seconds
-        
+
     Returns:
         Dictionary with "url", "key", "model", and "timeout" keys
     """
@@ -183,9 +193,9 @@ def get_llm_configuration(
         "url": None,
         "key": None,
         "model": None,
-        "timeout": timeout or 180.0  # Default to 3 minutes
+        "timeout": timeout or 180.0,  # Default to 3 minutes
     }
-    
+
     # Provider-based configuration
     if provider_name:
         provider_info = PROVIDERS.get(provider_name)
@@ -193,27 +203,27 @@ def get_llm_configuration(
             result["url"] = provider_info["url"]
             result["key"] = provider_info["key"]
             result["model"] = provider_info["default_model"]
-    
+
     # Custom URL override
     if api_url:
         result["url"] = api_url
-    
+
     # API key override
     if api_key:
         result["key"] = api_key
-    
+
     # Model override
     if model_name:
         result["model"] = model_name
-    
+
     # Fallbacks to environment variables if values are still None
     if result["url"] is None:
         result["url"] = LLM_API_URL
-    
+
     if result["key"] is None:
         result["key"] = LLM_API_KEY
-    
+
     if result["model"] is None:
         result["model"] = LLM_MODEL_NAME
-    
+
     return result

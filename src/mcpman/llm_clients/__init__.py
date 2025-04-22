@@ -11,6 +11,7 @@ from typing import Dict, Optional, Any, Union
 from .base import BaseLLMClient
 from .openai_compat import OpenAICompatClient
 from .anthropic import AnthropicClient
+from .openai_responses import OpenAIResponsesClient
 
 
 def create_llm_client(
@@ -19,17 +20,18 @@ def create_llm_client(
 ) -> BaseLLMClient:
     """
     Factory function to create the appropriate LLM client based on provider.
-    
+
     Args:
         provider_config: Provider configuration with url, key, and model
         provider_name: Optional provider name for explicit client selection
-        
+
     Returns:
         Instance of the appropriate LLMClient implementation
     """
     # Map provider names to client classes
     provider_map = {
         "openai": OpenAICompatClient,
+        "openai_responses": OpenAIResponsesClient,
         "anthropic": AnthropicClient,
         "lmstudio": OpenAICompatClient,
         "ollama": OpenAICompatClient,
@@ -41,10 +43,10 @@ def create_llm_client(
         "deepinfra": OpenAICompatClient,
         # Add more providers here
     }
-    
+
     # Default to OpenAI-compatible client
     client_class = OpenAICompatClient
-    
+
     # If provider name is specified, use it
     if provider_name and provider_name in provider_map:
         client_class = provider_map[provider_name]
@@ -57,21 +59,21 @@ def create_llm_client(
     elif provider_config.get("url") and "anthropic" in provider_config["url"].lower():
         # Check if URL indicates Anthropic
         client_class = AnthropicClient
-    
+
     # Log the provider selection
     provider_str = provider_name or "auto-detected"
     logging.debug(f"Creating {client_class.__name__} for provider: {provider_str}")
     logging.debug(f"Model: {provider_config.get('model')}")
     logging.debug(f"API URL: {provider_config.get('url')}")
-    
+
     # Extract client configuration
     api_key = provider_config.get("key", "")
     api_url = provider_config.get("url", "")
     model_name = provider_config.get("model", "")
-    
+
     # Get timeout if provided, otherwise use default
     timeout = float(provider_config.get("timeout", 180.0))
-    
+
     # Create and return the appropriate client
     return client_class(
         api_key=api_key,
@@ -82,4 +84,10 @@ def create_llm_client(
 
 
 # Expose the public interface
-__all__ = ["create_llm_client", "BaseLLMClient", "OpenAICompatClient", "AnthropicClient"]
+__all__ = [
+    "create_llm_client",
+    "BaseLLMClient",
+    "OpenAICompatClient",
+    "AnthropicClient",
+    "OpenAIResponsesClient",
+]
