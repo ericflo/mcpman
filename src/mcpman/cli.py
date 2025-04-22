@@ -545,15 +545,32 @@ async def main() -> None:
         top_border = f"\n{Fore.CYAN}╔{'═' * (box_width - 2)}╗{Style.RESET_ALL}"
         bottom_border = f"{Fore.CYAN}╚{'═' * (box_width - 2)}╝{Style.RESET_ALL}\n"
         
-        # Create title with centering
+        # Create title with proper centering
         title = "LLM CONFIGURATION"
-        padding_each_side = (box_width - len(title) - 2) // 2
-        title_line = f"{Fore.CYAN}║{' ' * padding_each_side}{Fore.YELLOW}{title}{Style.RESET_ALL}{' ' * padding_each_side}{Fore.CYAN}║{Style.RESET_ALL}"
-        if (box_width - len(title) - 2) % 2 != 0:  # Handle odd padding
-            title_line = f"{Fore.CYAN}║{' ' * padding_each_side}{Fore.YELLOW}{title}{Style.RESET_ALL}{' ' * (padding_each_side + 1)}{Fore.CYAN}║{Style.RESET_ALL}"
+        # Plain title length (without colors)
+        title_len = len(title)
         
-        # Calculate width for content formatting
-        content_width = box_width - 24  # Allow for label and spacing
+        # Calculate padding needed on each side to center the title
+        left_padding = (box_width - title_len - 2) // 2
+        right_padding = box_width - title_len - 2 - left_padding
+        
+        # Ensure minimum padding
+        left_padding = max(1, left_padding)
+        right_padding = max(1, right_padding)
+        
+        # Create the title line with precise padding
+        title_line = f"{Fore.CYAN}║{' ' * left_padding}{Fore.YELLOW}{title}{Style.RESET_ALL}{' ' * right_padding}{Fore.CYAN}║{Style.RESET_ALL}"
+        
+        # Define function to calculate visible length without ANSI codes
+        def visible_length(s):
+            import re
+            ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+            return len(ansi_escape.sub('', s))
+            
+        # Calculate width for content formatting - account for labels and padding
+        # Labels take up fixed space: Implementation (14), Model (5), API URL (7), etc.
+        max_label_len = 16  # "Server Config: " is the longest label
+        content_width = box_width - max_label_len - 10  # Allow for label, borders and padding
         
         # Handle potential truncation of long values
         def format_value(value, max_width):
@@ -573,11 +590,24 @@ async def main() -> None:
         timeout_str = f"{provider_config.get('timeout', 180.0)}s"
         config_val = format_value(args.config, content_width)
         
-        print(f"{Fore.CYAN}║{Style.RESET_ALL} {Fore.GREEN}Implementation:{Style.RESET_ALL} {Fore.WHITE}{impl_val:<{content_width}}{Style.RESET_ALL} {Fore.CYAN}║{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}║{Style.RESET_ALL} {Fore.GREEN}Model:{Style.RESET_ALL}         {Fore.WHITE}{model_val:<{content_width}}{Style.RESET_ALL} {Fore.CYAN}║{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}║{Style.RESET_ALL} {Fore.GREEN}API URL:{Style.RESET_ALL}       {Fore.WHITE}{url_val:<{content_width}}{Style.RESET_ALL} {Fore.CYAN}║{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}║{Style.RESET_ALL} {Fore.GREEN}Timeout:{Style.RESET_ALL}       {Fore.WHITE}{timeout_str:<{content_width}}{Style.RESET_ALL} {Fore.CYAN}║{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}║{Style.RESET_ALL} {Fore.GREEN}Server Config:{Style.RESET_ALL} {Fore.WHITE}{config_val:<{content_width}}{Style.RESET_ALL} {Fore.CYAN}║{Style.RESET_ALL}")
+        # Create each row with proper alignment, calculating padding dynamically based on visible content length
+        def create_row(label, value, label_width=16):
+            # Fixed-width label with proper coloring
+            label_text = f"{Fore.GREEN}{label}:{Style.RESET_ALL}"
+            # Add proper padding to align labels
+            label_padding = " " * (label_width - visible_length(label_text) + 1)
+            # Calculate the right padding needed to align the right border
+            row_content = f"{label_text}{label_padding}{Fore.WHITE}{value}{Style.RESET_ALL}"
+            padding_needed = max(0, box_width - visible_length(row_content) - 4)  # -4 for borders and spaces
+            # Return the complete row with proper border alignment
+            return f"{Fore.CYAN}║{Style.RESET_ALL} {row_content}{' ' * padding_needed} {Fore.CYAN}║{Style.RESET_ALL}"
+        
+        # Print each row with consistent border alignment
+        print(create_row("Implementation", impl_val))
+        print(create_row("Model", model_val))
+        print(create_row("API URL", url_val))
+        print(create_row("Timeout", timeout_str))
+        print(create_row("Server Config", config_val))
         
         print(bottom_border)
 

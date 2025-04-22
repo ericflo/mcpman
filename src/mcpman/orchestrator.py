@@ -122,13 +122,19 @@ def format_llm_response(content: str, is_final: bool = False) -> str:
     # Format box title
     title = "FINAL ANSWER" if is_final else "POTENTIAL ANSWER"
     
-    # Calculate padding to center title precisely
-    title_padding_left = (box_width - len(title) - 4) // 2
-    title_padding_right = box_width - len(title) - 4 - title_padding_left
+    # Calculate padding to center title precisely accounting for ANSI colors
+    def visible_length(s):
+        # Remove ANSI escape sequences
+        import re
+        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+        return len(ansi_escape.sub('', s))
+        
+    # For the title, we'll apply colors later, so just use its plain length
+    title_len = len(title)
     
-    # Ensure minimum padding
-    title_padding_left = max(title_padding_left, 2)
-    title_padding_right = max(title_padding_right, 2)
+    # Calculate left and right padding to center the title
+    title_padding_left = max(1, (box_width - title_len - 4) // 2)
+    title_padding_right = max(1, box_width - title_len - 4 - title_padding_left)
         
     # Format header, title, and footer with precisely calculated width
     if is_final:
@@ -843,10 +849,23 @@ async def initialize_and_run(
                                 bottom_border = f"  {Fore.MAGENTA}╚{'═' * (box_width - 4)}╝{Style.RESET_ALL}"
                                 
                                 # Create the title with properly calculated padding
+                                # Function to calculate visible length (excluding ANSI colors)
+                                def visible_length(s):
+                                    # Remove ANSI escape sequences
+                                    import re
+                                    ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+                                    return len(ansi_escape.sub('', s))
+                                
+                                # Create the title with proper coloring
                                 title_text = f"{Fore.GREEN}Server '{server.name}'{Style.RESET_ALL} initialized with {Fore.CYAN}{len(server_tools)}{Style.RESET_ALL} tools:"
-                                title_len = len(server.name) + len(str(len(server_tools))) + 26  # Estimate visible length
-                                padding = ' ' * max(0, box_width - title_len - 7)  # -7 for the magenta borders and space
-                                title = f"  {Fore.MAGENTA}║{Style.RESET_ALL} {title_text}{padding}{Fore.MAGENTA}║{Style.RESET_ALL}"
+                                
+                                # Calculate the right padding needed based on visible length of title text
+                                title_visible_len = visible_length(title_text)
+                                padding_needed = max(0, box_width - title_visible_len - 7)  # -7 for the magenta borders and spaces
+                                padding = ' ' * padding_needed
+                                
+                                # Create the title line with properly calculated padding
+                                title = f"  {Fore.MAGENTA}║{Style.RESET_ALL} {title_text}{padding} {Fore.MAGENTA}║{Style.RESET_ALL}"
                                 
                                 # Show box with tools
                                 print(top_border)
@@ -885,11 +904,18 @@ async def initialize_and_run(
                                 
                                 # Print rows
                                 for row in rows:
-                                    line = f"  {Fore.MAGENTA}║{Style.RESET_ALL} " + "".join(row)
-                                    # Calculate remaining padding needed
-                                    line_length = usable_width  # This is what we allocated for the columns
-                                    line_padding = ' ' * max(0, usable_width - line_length)
-                                    print(f"{line}{line_padding}{Fore.MAGENTA}║{Style.RESET_ALL}")
+                                    # Create the line content with tool names
+                                    line_content = "".join(row)
+                                    
+                                    # Calculate the visible length to ensure proper right border alignment
+                                    line_visible_len = visible_length(line_content)
+                                    
+                                    # Calculate the padding needed for right alignment
+                                    padding_needed = max(0, usable_width - line_visible_len)
+                                    padding = ' ' * padding_needed
+                                    
+                                    # Print with proper border alignment
+                                    print(f"  {Fore.MAGENTA}║{Style.RESET_ALL} {line_content}{padding} {Fore.MAGENTA}║{Style.RESET_ALL}")
                                 
                                 print(bottom_border)
                             else:
@@ -955,10 +981,19 @@ async def initialize_and_run(
                         subsequent_indent="  "
                     )
                     
-                    # Format the title line with proper indent
-                    title_line = f"{Fore.MAGENTA}│{Style.RESET_ALL} {Fore.YELLOW}Running prompt:{Style.RESET_ALL}"
-                    title_padding = ' ' * (box_width - 17)  # "Running prompt:" is 16 chars
-                    title_line += f"{title_padding}{Fore.MAGENTA}│{Style.RESET_ALL}"
+                    # Function to calculate visible length without ANSI codes
+                    def visible_length(s):
+                        import re
+                        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+                        return len(ansi_escape.sub('', s))
+                    
+                    # Format the title with proper indent and coloring
+                    title_text = f"{Fore.YELLOW}Running prompt:{Style.RESET_ALL}"
+                    # Calculate padding based on visible length (without ANSI codes)
+                    title_visible_len = visible_length(title_text)
+                    padding_needed = max(0, box_width - title_visible_len - 4)  # -4 for border chars and spaces
+                    # Create the title line with proper padding
+                    title_line = f"{Fore.MAGENTA}│{Style.RESET_ALL} {title_text}{' ' * padding_needed} {Fore.MAGENTA}│{Style.RESET_ALL}"
                     
                     # Print the completed box
                     print(header)
