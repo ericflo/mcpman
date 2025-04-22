@@ -59,9 +59,19 @@ def format_tool_response(name: str, response: str) -> str:
     terminal_width = get_terminal_width()
     
     # Clean and normalize the response
-    # Remove any control characters or weird whitespace
+    # Remove any control characters while preserving special display characters
     import re
-    clean_response = re.sub(r'[\x00-\x1F\x7F]', '', response)
+    
+    # Remove control characters but preserve tabs and newlines
+    clean_response = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', response)
+    
+    # Replace tabs with spaces
+    clean_response = clean_response.replace('\t', '    ')
+    
+    # Normalize line endings
+    clean_response = re.sub(r'\r\n?', '\n', clean_response)
+    
+    # For display in one line, replace newlines with spaces and collapse multiple spaces
     clean_response = re.sub(r'\s+', ' ', clean_response).strip()
     
     # Determine if response needs truncation
@@ -75,16 +85,44 @@ def format_tool_response(name: str, response: str) -> str:
     # Calculate max response length to display
     max_resp_length = terminal_width - prefix_visible_length - 5  # Leave some margin
     
+    # Handle JSON responses specially for better display
+    is_json = False
+    if (clean_response.startswith('{') and clean_response.endswith('}')) or \
+       (clean_response.startswith('[') and clean_response.endswith(']')):
+        is_json = True
+
     # Apply intelligent truncation
     if len(clean_response) > max_resp_length:
-        if max_resp_length > 60:
-            # For longer terminals, show beginning and end
-            start_len = int(max_resp_length * 0.6)  # Show more of the beginning
-            end_len = max_resp_length - start_len - 5  # Space for ellipsis
-            display_resp = clean_response[:start_len] + "..." + clean_response[-end_len:]
+        if is_json:
+            # For JSON, truncate to show structure but replace middle content with ellipsis
+            if max_resp_length > 60:
+                # Example input: {"foo": "bar", "baz": 123, "qux": [1,2,3]}
+                # Example output: {"foo": "bar", ... "qux": [1,2,3]}
+                
+                # Find a point roughly 2/3 through the visible length to place the ellipsis
+                split_point = int(max_resp_length * 0.6)
+                # For JSON, make sure we don't split in the middle of a quoted string or property name
+                # Find the last comma before the split point
+                last_comma = clean_response.rfind(',', 0, split_point)
+                if last_comma > 0:
+                    # Found a good splitting point at a comma
+                    display_resp = clean_response[:last_comma+1] + " ... " + clean_response[-(max_resp_length-split_point-5):]
+                else:
+                    # No comma found, just do a clean split
+                    display_resp = clean_response[:split_point] + "..." + clean_response[-20:]
+            else:
+                # For narrow terminals with JSON, show beginning and type indicator
+                display_resp = clean_response[:max_resp_length-5] + "..."
         else:
-            # For narrow terminals, just show beginning with ellipsis
-            display_resp = clean_response[:max_resp_length-5] + "..."
+            # For normal text
+            if max_resp_length > 60:
+                # For longer terminals, show beginning and end
+                start_len = int(max_resp_length * 0.6)  # Show more of the beginning
+                end_len = max_resp_length - start_len - 5  # Space for ellipsis
+                display_resp = clean_response[:start_len] + "..." + clean_response[-end_len:]
+            else:
+                # For narrow terminals, just show beginning with ellipsis
+                display_resp = clean_response[:max_resp_length-5] + "..."
     else:
         display_resp = clean_response
     
@@ -998,8 +1036,13 @@ async def initialize_and_run(
                     # Collapse multiple newlines and strip
                     normalized_prompt = re.sub(r'\n\s*\n+', '\n\n', normalized_prompt).strip()
                     
-                    # Clean text for display - treat as a single paragraph
-                    clean_prompt = " ".join(normalized_prompt.split())
+                    # Clean text for display while preserving special characters
+                    # First strip leading/trailing whitespace
+                    clean_prompt = normalized_prompt.strip()
+                    # Replace internal whitespace sequences with a single space
+                    import re
+                    clean_prompt = re.sub(r'\s+', ' ', clean_prompt)
+                    # Make sure to preserve ellipsis and other special characters
                     
                     # Now wrap as a single paragraph for clean display, without indentation
                     wrapped_prompt = textwrap.fill(
