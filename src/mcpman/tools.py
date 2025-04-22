@@ -111,21 +111,21 @@ class Tool:
                                 
                             sanitized_props[name] = fixed_prop
 
-                                # If it has a default, OpenAI prefers we handle optional parameters differently
-                                # For strict mode, we need to make it a union type with null instead
-                                if "default" in prop_info:
-                                    # Remove the default property
-                                    fixed_prop = sanitized_props[name].copy()
-                                    del fixed_prop["default"]
-                                    
-                                    # Make it a union type that accepts null
-                                    if isinstance(fixed_prop.get("type"), str):
-                                        fixed_prop["type"] = [fixed_prop["type"], "null"]
-                                    
-                                    sanitized_props[name] = fixed_prop
-                                    logging.info(
-                                        f"Converted property '{name}' with default to union with null type for OpenAI compatibility"
-                                    )
+                            # If it has a default, OpenAI prefers we handle optional parameters differently
+                            # For strict mode, we need to make it a union type with null instead
+                            if "default" in prop_info:
+                                # Remove the default property
+                                fixed_prop = sanitized_props[name].copy()
+                                del fixed_prop["default"]
+                                
+                                # Make it a union type that accepts null
+                                if isinstance(fixed_prop.get("type"), str):
+                                    fixed_prop["type"] = [fixed_prop["type"], "null"]
+                                
+                                sanitized_props[name] = fixed_prop
+                                logging.info(
+                                    f"Converted property '{name}' with default to union with null type for OpenAI compatibility"
+                                )
                         else:
                             sanitized_props[name] = prop_info
                             
