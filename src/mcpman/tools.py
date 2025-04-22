@@ -60,7 +60,7 @@ class Tool:
         Returns:
             Dictionary matching OpenAI's tool schema format
         """
-        parameters_schema = {"type": "object", "properties": {}, "required": []}
+        parameters_schema = {"type": "object", "properties": {}, "required": [], "additionalProperties": False}
 
         if isinstance(self.input_schema, dict):
             # Extract and sanitize properties
@@ -96,8 +96,40 @@ class Tool:
                                 )
                             else:
                                 sanitized_props[name] = prop_info
+
+                                # If it has a default, OpenAI prefers we handle optional parameters differently
+                                # For strict mode, we need to make it a union type with null instead
+                                if "default" in prop_info:
+                                    # Remove the default property
+                                    fixed_prop = sanitized_props[name].copy()
+                                    del fixed_prop["default"]
+                                    
+                                    # Make it a union type that accepts null
+                                    if isinstance(fixed_prop.get("type"), str):
+                                        fixed_prop["type"] = [fixed_prop["type"], "null"]
+                                    
+                                    sanitized_props[name] = fixed_prop
+                                    logging.info(
+                                        f"Converted property '{name}' with default to union with null type for OpenAI compatibility"
+                                    )
                         else:
                             sanitized_props[name] = prop_info
+                            
+                            # If it has a default, OpenAI prefers we handle optional parameters differently
+                            # For strict mode, we need to make it a union type with null instead
+                            if "default" in prop_info:
+                                # Remove the default property
+                                fixed_prop = sanitized_props[name].copy()
+                                del fixed_prop["default"]
+                                
+                                # Make it a union type that accepts null
+                                if isinstance(fixed_prop.get("type"), str):
+                                    fixed_prop["type"] = [fixed_prop["type"], "null"]
+                                
+                                sanitized_props[name] = fixed_prop
+                                logging.info(
+                                    f"Converted property '{name}' with default to union with null type for OpenAI compatibility"
+                                )
                     else:
                         # Special handling for output_schema which could be either a string or object
                         if name == "output_schema":
@@ -122,14 +154,14 @@ class Tool:
                             )
                 parameters_schema["properties"] = sanitized_props
 
-            # Extract required fields
-            input_required = self.input_schema.get("required")
-            if isinstance(input_required, list):
-                parameters_schema["required"] = [
-                    req
-                    for req in input_required
-                    if req in parameters_schema["properties"]
-                ]
+            # Handle required fields based on strict mode
+            # In strict mode, we need all properties to be in the required array
+            parameters_schema["required"] = list(parameters_schema["properties"].keys())
+            
+            # Log this information
+            logging.info(
+                f"Tool '{self.name}' using strict mode with {len(parameters_schema['required'])} required fields"
+            )
 
         # Construct the final schema
         tool_schema = {
@@ -138,6 +170,7 @@ class Tool:
                 "name": self.name,
                 "description": self.description,
                 "parameters": parameters_schema,
+                "strict": True,
             },
         }
 
