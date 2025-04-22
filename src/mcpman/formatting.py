@@ -409,17 +409,54 @@ def format_llm_response(content, is_final=False):
     # Normalize the content text
     clean_content = normalize_text(content)
     
-    # Determine the appropriate box style
-    style = BoxStyle.SUCCESS if is_final else BoxStyle.LIGHT
-    
-    # Create the title based on whether it's a final answer
-    title = "FINAL ANSWER" if is_final else "POTENTIAL ANSWER"
-    
-    # Use the box drawing function to create the full boxed content
-    box_lines = draw_box(title, clean_content, style=style)
-    
-    # Join and return the complete box
-    return '\n'.join(box_lines)
+    if is_final:
+        # For final answers, use the success style for the table header
+        # but present the actual content without the box for easy copy/paste
+        style = BoxStyle.SUCCESS
+        title = "FINAL ANSWER"
+        
+        # Create simplified header (top and bottom only, no middle separator)
+        color = style['color']
+        # Get terminal width for consistent sizing but make it narrower
+        width = get_terminal_width() - 16  # Reduce width by 10 more chars than standard
+        content_width = width - 4
+        
+        # Create horizontal lines with exact width
+        horizontal_line = f"{style['horizontal'] * content_width}"
+        top_border = f"{color}{style['top_left']}{horizontal_line}{style['top_right']}{Style.RESET_ALL}"
+        bottom_border = f"{color}{style['bottom_left']}{horizontal_line}{style['bottom_right']}{Style.RESET_ALL}"
+        
+        # Create colored title
+        colored_title = f"{Fore.WHITE}{title}{Style.RESET_ALL}"
+        title_visible_len = visible_length(colored_title)
+        
+        # Calculate padding for exact centering
+        padding_total = content_width - title_visible_len
+        left_padding = padding_total // 2
+        right_padding = padding_total - left_padding
+        
+        # Format the title line with exact centering
+        title_line = (
+            f"{color}{style['vertical']}{Style.RESET_ALL}"
+            f"{' ' * left_padding}{colored_title}{' ' * right_padding}"
+            f"{color}{style['vertical']}{Style.RESET_ALL}"
+        )
+        
+        # Return only top border, title line, bottom border and the content
+        header = f"{top_border}\n{title_line}\n{bottom_border}"
+        
+        # Return the header followed by the clean content with proper spacing
+        return header + "\n\n" + clean_content
+    else:
+        # For potential answers, keep the existing box format
+        style = BoxStyle.LIGHT
+        title = "POTENTIAL ANSWER"
+        
+        # Use the box drawing function to create the full boxed content
+        box_lines = draw_box(title, clean_content, style=style)
+        
+        # Join and return the complete box
+        return '\n'.join(box_lines)
 
 def format_tool_list(server_name, tools, indent=2):
     """
