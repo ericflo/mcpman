@@ -433,38 +433,45 @@ def format_tool_list(server_name, tools, indent=2):
     tool_names = [tool.name for tool in tools]
     max_name_len = max(len(name) for name in tool_names) if tool_names else 0
     
-    # Determine box width
+    # Determine box width - ensure it's sufficient for content and tool names
     min_width = max_name_len + 20
     title_min_width = len(server_name) + 45
     box_width = min(terminal_width - indent - 4, max(min_width, title_min_width))
     
-    # Create the title
-    title = f"Server '{server_name}' initialized with {len(tools)} tools:"
-    
-    # Format tools for display
+    # Format tools for display - each tool on its own line with arrow indicator
     formatted_tools = []
     for name in tool_names:
+        # Add color formatting but maintain proper alignment
         formatted_tools.append(f"{Fore.CYAN}▸ {Fore.WHITE}{name}{Style.RESET_ALL}")
     
-    # Draw the box
-    lines = draw_box(None, formatted_tools, style=BoxStyle.SERVER, width=box_width, indent=indent)
+    # Create box parts with uniform styling
+    top_border = f"{' ' * indent}{Fore.MAGENTA}╔{'═' * (box_width - 4)}╗{Style.RESET_ALL}"
+    bottom_border = f"{' ' * indent}{Fore.MAGENTA}╚{'═' * (box_width - 4)}╝{Style.RESET_ALL}"
     
-    # Insert title separately (left-aligned like the tool rows)
+    # Create the title with color highlighting
     colored_title = f"{Fore.GREEN}Server '{server_name}'{Style.RESET_ALL} initialized with {Fore.CYAN}{len(tools)}{Style.RESET_ALL} tools:"
     title_visible_len = visible_length(colored_title)
     
-    # Calculate exact padding for right border alignment
-    # Box width - 4 accounts for the visible width between borders
+    # Calculate padding for right border alignment
     padding_needed = max(0, box_width - 4 - title_visible_len)
     padding = ' ' * padding_needed
     title_line = f"{' ' * indent}{Fore.MAGENTA}║{Style.RESET_ALL} {colored_title}{padding} {Fore.MAGENTA}║{Style.RESET_ALL}"
     
-    # Insert the title after the top border
-    lines.insert(1, title_line)
-    
-    # Insert separator line
+    # Create separator line with exact width matching top/bottom borders
     separator = f"{' ' * indent}{Fore.MAGENTA}╠{'═' * (box_width - 4)}╣{Style.RESET_ALL}"
-    lines.insert(2, separator)
+    
+    # Format each tool line with proper padding
+    content_lines = []
+    for tool in formatted_tools:
+        tool_visible_len = visible_length(tool)
+        # Calculate padding needed for right border alignment
+        padding_needed = max(0, box_width - 4 - tool_visible_len)
+        padding = ' ' * padding_needed
+        line = f"{' ' * indent}{Fore.MAGENTA}║{Style.RESET_ALL} {tool}{padding} {Fore.MAGENTA}║{Style.RESET_ALL}"
+        content_lines.append(line)
+    
+    # Assemble the full box in order
+    lines = [top_border, title_line, separator] + content_lines + [bottom_border]
     
     return lines
 
