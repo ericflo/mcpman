@@ -26,9 +26,11 @@ import datetime
 import pathlib
 from typing import Optional, Dict, Any, Union
 
-# For colorful terminal output
-from colorama import Fore, Style, init
-init(autoreset=True)
+# Import formatting utilities
+from .formatting import (
+    print_llm_config, BoxStyle, print_box, format_value, 
+    get_terminal_width, visible_length
+)
 
 from .config import (
     DEFAULT_CONFIG_PATH,
@@ -518,109 +520,14 @@ async def main() -> None:
 
     # Print configuration (only if not in output-only mode)
     if not args.output_only:
-        
-        # Calculate appropriate box width
-        def get_terminal_width():
-            """Get terminal width with reasonable constraints"""
-            try:
-                width = os.get_terminal_size().columns
-                return min(width, 120)  # Cap at 120 chars for readability 
-            except (OSError, AttributeError):
-                return 80
-                
-        terminal_width = get_terminal_width()
-        
-        # Calculate needed width based on content
-        url_length = len(provider_config['url'])
-        model_length = len(provider_config['model'])
-        config_length = len(args.config)
-        
-        # Find the longest content item 
-        max_content_length = max(url_length, model_length, config_length, 30)
-        
-        # Total width needs: label (15) + content + border/spacing (10)
-        box_width = min(terminal_width - 4, max(max_content_length + 25, 60))
-        
-        # Build box border with calculated width
-        top_border = f"\n{Fore.CYAN}╔{'═' * (box_width - 2)}╗{Style.RESET_ALL}"
-        bottom_border = f"{Fore.CYAN}╚{'═' * (box_width - 2)}╝{Style.RESET_ALL}\n"
-        
-        # Create title with proper centering
-        title = "LLM CONFIGURATION"
-        # Plain title length (without colors)
-        title_len = len(title)
-        
-        # Calculate padding needed on each side to center the title
-        left_padding = (box_width - title_len - 2) // 2
-        right_padding = box_width - title_len - 2 - left_padding
-        
-        # Ensure minimum padding
-        left_padding = max(1, left_padding)
-        right_padding = max(1, right_padding)
-        
-        # Create the title line with precise padding
-        title_line = f"{Fore.CYAN}║{' ' * left_padding}{Fore.YELLOW}{title}{Style.RESET_ALL}{' ' * right_padding}{Fore.CYAN}║{Style.RESET_ALL}"
-        
-        # Define function to calculate visible length without ANSI codes
-        def visible_length(s):
-            import re
-            ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
-            return len(ansi_escape.sub('', s))
-            
-        # Calculate width for content formatting - account for labels and padding
-        # Labels take up fixed space: Implementation (14), Model (5), API URL (7), etc.
-        max_label_len = 16  # "Server Config: " is the longest label
-        content_width = box_width - max_label_len - 10  # Allow for label, borders and padding
-        
-        # Handle potential truncation of long values
-        def format_value(value, max_width):
-            if len(value) > max_width:
-                # For URLs, find a good breaking point for readability
-                if '/' in value and 'http' in value:
-                    # For URLs, try to break at a logical point like after a domain
-                    parts = value.split('/')
-                    if len(parts) > 3:  # http://domain.com/path
-                        # Keep protocol and domain, then add ... 
-                        base_url = '/'.join(parts[:3]) + '/'
-                        if len(base_url) <= max_width - 3:
-                            return base_url + "..."
-                
-                # For general values, truncate at a clean point
-                return value[:max_width-3] + "..."
-            return value
-        
-        # Print the box
-        print(top_border)
-        print(title_line)
-        print(f"{Fore.CYAN}╠{'═' * (box_width - 2)}╣{Style.RESET_ALL}")
-        
-        # Format and print each row with consistent alignment
-        impl_val = format_value(args.impl or 'custom', content_width)
-        model_val = format_value(provider_config['model'], content_width)
-        url_val = format_value(provider_config['url'], content_width)
-        timeout_str = f"{provider_config.get('timeout', 180.0)}s"
-        config_val = format_value(args.config, content_width)
-        
-        # Create each row with proper alignment, calculating padding dynamically based on visible content length
-        def create_row(label, value, label_width=16):
-            # Fixed-width label with proper coloring
-            label_text = f"{Fore.GREEN}{label}:{Style.RESET_ALL}"
-            # Add proper padding to align labels
-            label_padding = " " * (label_width - visible_length(label_text) + 1)
-            # Calculate the right padding needed to align the right border
-            row_content = f"{label_text}{label_padding}{Fore.WHITE}{value}{Style.RESET_ALL}"
-            padding_needed = max(0, box_width - visible_length(row_content) - 4)  # -4 for borders and spaces
-            # Return the complete row with proper border alignment
-            return f"{Fore.CYAN}║{Style.RESET_ALL} {row_content}{' ' * padding_needed} {Fore.CYAN}║{Style.RESET_ALL}"
-        
-        # Print each row with consistent border alignment
-        print(create_row("Implementation", impl_val))
-        print(create_row("Model", model_val))
-        print(create_row("API URL", url_val))
-        print(create_row("Timeout", timeout_str))
-        print(create_row("Server Config", config_val))
-        
-        print(bottom_border)
+        # Use the centralized LLM config display function
+        config_data = {
+            'impl': args.impl or 'custom',
+            'model': provider_config['model'],
+            'url': provider_config['url'],
+            'timeout': provider_config.get('timeout', 180.0)
+        }
+        print_llm_config(config_data, args.config)
 
     # Process prompt and verification - check if they're file paths
     user_prompt = read_file_if_exists(args.prompt)
