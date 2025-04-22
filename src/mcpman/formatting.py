@@ -448,11 +448,12 @@ def format_tool_list(server_name, tools, indent=2):
     top_border = f"{' ' * indent}{Fore.MAGENTA}╔{'═' * (box_width - 4)}╗{Style.RESET_ALL}"
     bottom_border = f"{' ' * indent}{Fore.MAGENTA}╚{'═' * (box_width - 4)}╝{Style.RESET_ALL}"
     
-    # Create the title with color highlighting
+    # Create the title with consistent alignment to match the tool rows
+    # Use the exact same horizontal spacing for the title row
     colored_title = f"{Fore.GREEN}Server '{server_name}'{Style.RESET_ALL} initialized with {Fore.CYAN}{len(tools)}{Style.RESET_ALL} tools:"
     title_visible_len = visible_length(colored_title)
     
-    # Calculate padding for right border alignment
+    # Calculate exact padding for right border alignment
     padding_needed = max(0, box_width - 4 - title_visible_len)
     padding = ' ' * padding_needed
     title_line = f"{' ' * indent}{Fore.MAGENTA}║{Style.RESET_ALL} {colored_title}{padding} {Fore.MAGENTA}║{Style.RESET_ALL}"
