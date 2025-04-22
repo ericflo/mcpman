@@ -217,11 +217,20 @@ def draw_box(title, content, style=BoxStyle.STANDARD, width=None, indent=0):
     
     # Create the title line with proper centering
     if title:
-        # Calculate padding for centering
+        # Calculate padding for exact centering
         title_len = len(title)
+        # Total padding = width - 2 (for left/right borders) - title length
         padding_total = width - 2 - title_len
+        
+        # Split padding evenly between left and right, handling odd-length padding
         left_padding = padding_total // 2
         right_padding = padding_total - left_padding
+        
+        # Ensure minimum padding
+        left_padding = max(1, left_padding)
+        right_padding = max(1, right_padding)
+        
+        # Create the title line with colored title and precise padding
         title_line = f"{box_indent}{vertical}{' ' * left_padding}{Fore.WHITE}{title}{Style.RESET_ALL}{' ' * right_padding}{vertical}"
         separator = f"{box_indent}{left_t}{horizontal * (width - 2)}{right_t}"
     else:
@@ -247,9 +256,12 @@ def draw_box(title, content, style=BoxStyle.STANDARD, width=None, indent=0):
         
         # Calculate padding for right alignment
         line_visible_len = visible_length(colored_line)
-        padding = ' ' * max(0, content_width - line_visible_len)
+        # Calculate exact padding needed for proper right border alignment
+        # We need width - 4 to account for: left border, space, content, padding, space, right border
+        padding_needed = max(0, width - 4 - line_visible_len)
+        padding = ' ' * padding_needed
         
-        # Create the formatted line
+        # Create the formatted line with correct padding
         formatted_line = f"{box_indent}{vertical} {colored_line}{padding} {vertical}"
         formatted_lines.append(formatted_line)
     
@@ -442,7 +454,8 @@ def format_tool_list(server_name, tools, indent=2):
     title_visible_len = visible_length(colored_title)
     
     # Calculate exact padding for right border alignment
-    padding_needed = max(0, box_width - 4 - 2 - title_visible_len)
+    # Box width - 4 accounts for the visible width between borders
+    padding_needed = max(0, box_width - 4 - title_visible_len)
     padding = ' ' * padding_needed
     title_line = f"{' ' * indent}{Fore.MAGENTA}║{Style.RESET_ALL} {colored_title}{padding} {Fore.MAGENTA}║{Style.RESET_ALL}"
     
