@@ -140,29 +140,34 @@ def format_llm_response(content: str, is_final: bool = False) -> str:
     # Create title with color
     colored_title = f"{Fore.WHITE}{title}{Style.RESET_ALL}"
     
-    # Calculate exact padding for perfect centering
-    # The box_width includes 2 chars for the left/right borders
-    # We need padding on left and right of the title text
-    usable_width = box_width - 2  # width excluding borders
+    # For perfect centering, we need to account for borders and spaces
+    # Format: ║ WHITE_TEXT ║ or │ WHITE_TEXT │
+    # So we need to calculate the exact visible width and center within that space
     
-    # Calculate padding for exact centering, accounting for title length without ANSI codes
-    title_padding_total = usable_width - len(title)
-    title_padding_left = title_padding_total // 2
-    title_padding_right = title_padding_total - title_padding_left
+    # Calculate exact usable width between borders (box width - 2 for borders)
+    usable_width = box_width - 2
+    
+    # Calculate total padding needed (usable width - title length)
+    padding_total = usable_width - len(title)
+    
+    # Divide padding between left and right sides
+    # For exact centering, we need to handle odd-length padding
+    left_padding = padding_total // 2
+    right_padding = padding_total - left_padding
     
     # Make sure we have at least 1 space on each side
-    title_padding_left = max(1, title_padding_left)
-    title_padding_right = max(1, title_padding_right)
+    left_padding = max(1, left_padding)
+    right_padding = max(1, right_padding)
     
     # Create the borders and lines with proper colors
     if is_final:
         header = f"\n{Fore.GREEN}╔{'═' * (box_width - 2)}╗{Style.RESET_ALL}"
-        title_line = f"{Fore.GREEN}║{' ' * title_padding_left}{colored_title}{' ' * title_padding_right}{Fore.GREEN}║{Style.RESET_ALL}"
+        title_line = f"{Fore.GREEN}║{' ' * left_padding}{colored_title}{' ' * right_padding}{Fore.GREEN}║{Style.RESET_ALL}"
         separator = f"{Fore.GREEN}╠{'═' * (box_width - 2)}╣{Style.RESET_ALL}"
         footer = f"{Fore.GREEN}╚{'═' * (box_width - 2)}╝{Style.RESET_ALL}"
     else:
         header = f"\n{Fore.YELLOW}╭{'─' * (box_width - 2)}╮{Style.RESET_ALL}"
-        title_line = f"{Fore.YELLOW}│{' ' * title_padding_left}{colored_title}{' ' * title_padding_right}{Fore.YELLOW}│{Style.RESET_ALL}"
+        title_line = f"{Fore.YELLOW}│{' ' * left_padding}{colored_title}{' ' * right_padding}{Fore.YELLOW}│{Style.RESET_ALL}"
         separator = f"{Fore.YELLOW}├{'─' * (box_width - 2)}┤{Style.RESET_ALL}"
         footer = f"{Fore.YELLOW}╰{'─' * (box_width - 2)}╯{Style.RESET_ALL}"
     
@@ -996,12 +1001,12 @@ async def initialize_and_run(
                     # Clean text for display - treat as a single paragraph
                     clean_prompt = " ".join(normalized_prompt.split())
                     
-                    # Now wrap as a single paragraph for clean display
+                    # Now wrap as a single paragraph for clean display, without indentation
                     wrapped_prompt = textwrap.fill(
                         clean_prompt,
                         width=box_width-6,  # Allow space for borders and padding
-                        initial_indent="  ",
-                        subsequent_indent="  "
+                        initial_indent="",  # No indentation needed - we'll add spacing in the line printing
+                        subsequent_indent=""  # No indentation for wrapped lines
                     )
                     
                     # Function to calculate visible length without ANSI codes
