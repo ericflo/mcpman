@@ -71,10 +71,12 @@ class Tool:
                     if isinstance(prop_info, dict) and "type" in prop_info:
                         # Handle array type with prefixItems or default structure
                         if prop_info.get("type") == "array":
+                            # Make a copy of the property to avoid modifying the original
+                            fixed_prop = prop_info.copy()
+                            
                             # Check if it has prefixItems (tuple-like structure)
-                            if "prefixItems" in prop_info:
+                            if "prefixItems" in fixed_prop:
                                 # Convert to standard array with items for OpenAI
-                                fixed_prop = prop_info.copy()
                                 # Set items to a generic schema if not present
                                 if "items" not in fixed_prop:
                                     # Use the first prefix item's type as the items type
@@ -90,12 +92,24 @@ class Tool:
                                         ]
 
                                     fixed_prop["items"] = {"type": first_type}
-                                sanitized_props[name] = fixed_prop
+                                    logging.info(
+                                        f"Fixed array property '{name}' with prefixItems in tool '{self.name}' to include 'items'"
+                                    )
+                            # Always ensure array has items with a type
+                            elif "items" not in fixed_prop:
+                                # Add default items type as string if not specified
+                                fixed_prop["items"] = {"type": "string"}
                                 logging.info(
-                                    f"Fixed array property '{name}' in tool '{self.name}' to include 'items'"
+                                    f"Fixed array property '{name}' in tool '{self.name}' to include 'items' with default string type"
                                 )
-                            else:
-                                sanitized_props[name] = prop_info
+                            # If items is present but missing type
+                            elif isinstance(fixed_prop.get("items"), dict) and "type" not in fixed_prop["items"]:
+                                fixed_prop["items"]["type"] = "string"
+                                logging.info(
+                                    f"Fixed array property '{name}' in tool '{self.name}' - added missing type to items"
+                                )
+                                
+                            sanitized_props[name] = fixed_prop
 
                                 # If it has a default, OpenAI prefers we handle optional parameters differently
                                 # For strict mode, we need to make it a union type with null instead
