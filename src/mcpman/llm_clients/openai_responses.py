@@ -416,7 +416,7 @@ class OpenAIResponsesClient(BaseLLMClient):
             }
 
             # Only add temperature if not using o4-mini (which doesn't support it)
-            if not self.model_name.startswith("o4-mini"):
+            if not self.model_name.startswith("o"):
                 params["temperature"] = temperature
 
             # Add input based on format
