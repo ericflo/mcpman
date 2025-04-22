@@ -421,6 +421,21 @@ def parse_args() -> argparse.Namespace:
         dest="verification_prompt",
         help="Provide a custom verification prompt or path to a file containing the prompt.",
     )
+    
+    # Tool schema configuration
+    strict_tools_group = parser.add_mutually_exclusive_group()
+    strict_tools_group.add_argument(
+        "--strict-tools",
+        action="store_true", 
+        dest="strict_tools",
+        help="Enable strict mode for tool schemas (default if MCPMAN_STRICT_TOOLS=true).",
+    )
+    strict_tools_group.add_argument(
+        "--no-strict-tools",
+        action="store_false",
+        dest="strict_tools", 
+        help="Disable strict mode for tool schemas.",
+    )
 
     # Logging options
     parser.add_argument(
@@ -534,6 +549,7 @@ async def main() -> None:
             "model": provider_config["model"],
             "url": provider_config["url"],
             "timeout": provider_config.get("timeout", 180.0),
+            "strict_tools": "default" if args.strict_tools is None else str(args.strict_tools),
         }
         print_llm_config(config_data, args.config)
 
@@ -552,7 +568,7 @@ async def main() -> None:
 
     # Initialize servers and run the agent
     try:
-        # Pass through the output_only flag to our implementation
+        # Pass through the output_only flag and strict_tools to our implementation
         await initialize_and_run(
             config_path=args.config,
             user_prompt=user_prompt,
@@ -565,6 +581,7 @@ async def main() -> None:
             verification_prompt=verification_prompt,
             provider_name=args.impl,
             output_only=args.output_only,
+            strict_tools=args.strict_tools,
         )
     finally:
         # Log completion of execution even if there were exceptions
@@ -578,6 +595,7 @@ async def main() -> None:
                 "temperature": args.temperature,
                 "max_turns": args.max_turns,
                 "verify_completion": verify_completion,
+                "strict_tools": args.strict_tools,
             },
         )
 

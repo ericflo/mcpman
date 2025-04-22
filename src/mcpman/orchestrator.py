@@ -13,7 +13,7 @@ import datetime
 import time
 import os
 import sys
-from typing import Dict, List, Any, Optional, Tuple, Union
+from typing import Dict, List, Any, Optional, Tuple, Union, Literal, cast
 
 from .server import Server
 from .llm_client import LLMClient
@@ -356,6 +356,7 @@ class Orchestrator:
         verify_completion: bool = False,
         verification_prompt: Optional[str] = None,
         output_only: bool = False,
+        strict_tools: Optional[bool] = None,
     ):
         """Run the agent loop with tools and optional verification."""
         # Initialize conversation
@@ -370,9 +371,9 @@ class Orchestrator:
             except Exception as e:
                 logging.warning(f"Failed to list tools for server {server.name}: {e}")
 
-        # Convert tools to OpenAI schema
-        openai_tools = [tool.to_openai_schema() for tool in all_tools]
-        logging.debug(f"Prepared {len(openai_tools)} tools for the API.")
+        # Convert tools to OpenAI schema with strict mode setting
+        openai_tools = [tool.to_openai_schema(strict=strict_tools) for tool in all_tools]
+        logging.debug(f"Prepared {len(openai_tools)} tools for the API with strict={strict_tools} (None means use default)")
 
         # Get the event loop
         loop = asyncio.get_running_loop()
@@ -541,7 +542,8 @@ async def initialize_and_run(
     verify_completion: bool = False,
     verification_prompt: Optional[str] = None,
     provider_name: Optional[str] = None,  # Kept for backward compatibility
-    output_only: bool = False
+    output_only: bool = False,
+    strict_tools: Optional[bool] = None,
 ):
     """
     Initialize servers and run the agent loop.
@@ -556,6 +558,9 @@ async def initialize_and_run(
         max_turns: Maximum number of turns for the agent loop
         verify_completion: Whether to verify task completion before finishing
         verification_prompt: Custom system message for verification
+        provider_name: Provider name for backward compatibility
+        output_only: Whether to suppress UI output and only show final result
+        strict_tools: Whether to use strict mode for tool schemas (None = use default)
     """
     from .config import load_server_config
 
@@ -663,6 +668,7 @@ async def initialize_and_run(
                 verify_completion=verify_completion,
                 verification_prompt=verification_prompt,
                 output_only=output_only,
+                strict_tools=strict_tools,
             )
 
     except Exception as e:

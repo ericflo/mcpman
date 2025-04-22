@@ -126,8 +126,11 @@ MCPMan uses JSON configuration files to define the MCP servers. Examples:
 | `--temperature <FLOAT>` | Sampling temperature (default: 0.7) |
 | `--max-tokens <INT>` | Maximum response tokens |
 | `--no-verify` | Disable task verification |
+| `--strict-tools` | Enable strict mode for tool schemas (default) |
+| `--no-strict-tools` | Disable strict mode for tool schemas |
 
-API keys are set via environment variables: `OPENAI_API_KEY`, `GEMINI_API_KEY`, etc.
+API keys are set via environment variables: `OPENAI_API_KEY`, `GEMINI_API_KEY`, etc.  
+Tool schema behavior can be configured with the `MCPMAN_STRICT_TOOLS` environment variable.
 
 ## Why MCPMan?
 

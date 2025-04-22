@@ -665,6 +665,7 @@ def print_llm_config(config_data, config_path):
         f"Model:           {config_data.get('model', '')}",
         f"API URL:         {format_value(config_data.get('url', ''), 45)}",
         f"Timeout:         {config_data.get('timeout', 180.0)}s",
+        f"Strict Tools:    {config_data.get('strict_tools', 'default')}",
         f"Server Config:   {config_path}"
     ]
     

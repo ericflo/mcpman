@@ -1,7 +1,9 @@
 import re
 import logging
 import json
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional, Tuple, Union, Literal, cast
+
+from .config import STRICT_TOOLS
 
 
 def sanitize_name(name: str) -> str:
@@ -53,13 +55,20 @@ class Tool:
         self.input_schema: Dict[str, Any] = input_schema
         self.original_name: str = original_name  # Original name (e.g., add)
 
-    def to_openai_schema(self) -> Dict[str, Any]:
+    def to_openai_schema(self, strict: Optional[bool] = None) -> Dict[str, Any]:
         """
         Format the tool definition for the OpenAI API 'tools' parameter.
+
+        Args:
+            strict: Whether to enable strict mode for the tool schema
+                   If None, uses the global default setting from MCPMAN_STRICT_TOOLS
 
         Returns:
             Dictionary matching OpenAI's tool schema format
         """
+        # Determine if strict mode should be used
+        use_strict = STRICT_TOOLS if strict is None else strict
+
         # Construct the final schema
         tool_schema = {
             "type": "function",
@@ -67,12 +76,15 @@ class Tool:
                 "name": self.name,
                 "description": self.description,
                 "parameters": self.input_schema,
-                "strict": True,
             },
         }
 
+        # Add strict flag only if enabled
+        if use_strict:
+            tool_schema["function"]["strict"] = True
+
         logging.debug(
-            f"Generated OpenAI schema for tool '{self.name}': {json.dumps(tool_schema)}"
+            f"Generated OpenAI schema for tool '{self.name}' with strict={use_strict}"
         )
         return tool_schema
 
