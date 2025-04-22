@@ -922,16 +922,30 @@ async def initialize_and_run(
                                     ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
                                     return len(ansi_escape.sub('', s))
                                 
-                                # Create the title with proper coloring
-                                title_text = f"{Fore.GREEN}Server '{server.name}'{Style.RESET_ALL} initialized with {Fore.CYAN}{len(server_tools)}{Style.RESET_ALL} tools:"
+                                # Create a title with proper centering
+                                # First, we'll define the title without color to calculate proper padding
+                                plain_title = f"Server '{server.name}' initialized with {len(server_tools)} tools:"
                                 
-                                # Calculate the right padding needed based on visible length of title text
-                                title_visible_len = visible_length(title_text)
-                                padding_needed = max(0, box_width - title_visible_len - 7)  # -7 for the magenta borders and spaces
-                                padding = ' ' * padding_needed
+                                # Calculate exact centering (ignoring ANSI color codes)
+                                usable_box_width = box_width - 4  # -4 for left/right borders and spacing
                                 
-                                # Create the title line with properly calculated padding
-                                title = f"  {Fore.MAGENTA}║{Style.RESET_ALL} {title_text}{padding} {Fore.MAGENTA}║{Style.RESET_ALL}"
+                                # Calculate total padding needed for centering
+                                total_padding = usable_box_width - len(plain_title)
+                                # Divide padding between left and right sides
+                                left_padding = total_padding // 2
+                                right_padding = total_padding - left_padding
+                                
+                                # Ensure minimum padding
+                                left_padding = max(0, left_padding)
+                                right_padding = max(0, right_padding)
+                                
+                                # Now create the colored version of the title
+                                colored_title = f"{Fore.GREEN}Server '{server.name}'{Style.RESET_ALL} initialized with {Fore.CYAN}{len(server_tools)}{Style.RESET_ALL} tools:"
+                                
+                                # Create the centered title line
+                                left_pad = ' ' * left_padding
+                                right_pad = ' ' * right_padding
+                                title = f"  {Fore.MAGENTA}║{Style.RESET_ALL} {left_pad}{colored_title}{right_pad} {Fore.MAGENTA}║{Style.RESET_ALL}"
                                 
                                 # Show box with tools
                                 print(top_border)
