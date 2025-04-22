@@ -28,8 +28,12 @@ from typing import Optional, Dict, Any, Union
 
 # Import formatting utilities
 from .formatting import (
-    print_llm_config, BoxStyle, print_box, format_value, 
-    get_terminal_width, visible_length
+    print_llm_config,
+    BoxStyle,
+    print_box,
+    format_value,
+    get_terminal_width,
+    visible_length,
 )
 
 from .config import (
@@ -243,7 +247,10 @@ class JsonlLogFormatter(logging.Formatter):
 
 
 def setup_logging(
-    debug: bool = False, log_to_file: bool = True, log_dir: str = "logs", output_only: bool = False
+    debug: bool = False,
+    log_to_file: bool = True,
+    log_dir: str = "logs",
+    output_only: bool = False,
 ) -> str:
     """
     Configure logging for the application.
@@ -342,9 +349,8 @@ def parse_args() -> argparse.Namespace:
         "-m", "--model", help="Name of the LLM model to use (overrides environment)."
     )
 
-    # Provider options (mutually exclusive)
-    provider_group = parser.add_mutually_exclusive_group()
-    provider_group.add_argument(
+    # Provider options
+    parser.add_argument(
         "-i",
         "--impl",
         "--implementation",
@@ -352,7 +358,7 @@ def parse_args() -> argparse.Namespace:
         choices=PROVIDERS.keys(),
         help="Select a pre-configured LLM implementation (provider) to use (overrides environment).",
     )
-    provider_group.add_argument(
+    parser.add_argument(
         "--base-url",
         help="Custom LLM API URL (overrides environment, requires --api-key).",
     )
@@ -383,7 +389,7 @@ def parse_args() -> argparse.Namespace:
         default=2048,
         help="Maximum number of turns for the agent loop (default: 2048).",
     )
-    
+
     parser.add_argument(
         "--timeout",
         type=float,
@@ -464,7 +470,7 @@ def read_file_if_exists(path_or_content: str) -> str:
 async def main() -> None:
     """
     Main entry point for the application.
-    
+
     In normal mode, this displays all the intermediate steps of the process.
     In output-only mode (--output-only flag), only the final LLM output is shown.
 
@@ -480,12 +486,14 @@ async def main() -> None:
 
     # Setup logging
     log_to_file = not args.no_log_file
-    
+
     # Configure logging levels for output-only mode
     # When in output-only mode, we don't want to suppress print statements,
     # just logging messages
-        
-    log_file_path = setup_logging(args.debug, log_to_file, args.log_dir, args.output_only)
+
+    log_file_path = setup_logging(
+        args.debug, log_to_file, args.log_dir, args.output_only
+    )
     logger = logging.getLogger(__name__)
 
     if log_file_path:
@@ -522,10 +530,10 @@ async def main() -> None:
     if not args.output_only:
         # Use the centralized LLM config display function
         config_data = {
-            'impl': args.impl or 'custom',
-            'model': provider_config['model'],
-            'url': provider_config['url'],
-            'timeout': provider_config.get('timeout', 180.0)
+            "impl": args.impl or "custom",
+            "model": provider_config["model"],
+            "url": provider_config["url"],
+            "timeout": provider_config.get("timeout", 180.0),
         }
         print_llm_config(config_data, args.config)
 

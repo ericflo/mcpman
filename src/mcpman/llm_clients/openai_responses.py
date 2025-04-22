@@ -35,7 +35,7 @@ class OpenAIResponsesClient(BaseLLMClient):
         """
         system_content = None
         message_list = []
-        
+
         # Track tool calls by ID to properly link tool responses
         tool_calls_by_id = {}
         for msg in messages:
@@ -49,39 +49,47 @@ class OpenAIResponsesClient(BaseLLMClient):
             # Extract system message for instructions
             if msg["role"] == "system":
                 system_content = msg["content"]
-            
+
             # Process user and assistant messages
             elif msg["role"] in ["user", "assistant"]:
                 # Add content if present and not empty
                 if msg.get("content"):
-                    message_list.append({"role": msg["role"], "content": msg["content"]})
-                
+                    message_list.append(
+                        {"role": msg["role"], "content": msg["content"]}
+                    )
+
                 # Add tool calls from assistant messages
                 if msg["role"] == "assistant" and "tool_calls" in msg:
                     for tool_call in msg["tool_calls"]:
                         if tool_call["type"] == "function":
-                            message_list.append({
-                                "type": "function_call",
-                                "call_id": tool_call["id"],
-                                "name": tool_call["function"]["name"],
-                                "arguments": tool_call["function"]["arguments"]
-                            })
-            
+                            message_list.append(
+                                {
+                                    "type": "function_call",
+                                    "call_id": tool_call["id"],
+                                    "name": tool_call["function"]["name"],
+                                    "arguments": tool_call["function"]["arguments"],
+                                }
+                            )
+
             # Process tool response messages
             elif msg["role"] == "tool":
                 tool_call_id = msg.get("tool_call_id")
-                
+
                 # Skip invalid tool responses
                 if not tool_call_id or tool_call_id not in tool_calls_by_id:
-                    logging.debug(f"Skipping tool response with missing/invalid call_id: {tool_call_id}")
+                    logging.debug(
+                        f"Skipping tool response with missing/invalid call_id: {tool_call_id}"
+                    )
                     continue
-                
+
                 # Add properly formatted function_call_output
-                message_list.append({
-                    "type": "function_call_output",
-                    "call_id": tool_call_id,
-                    "output": msg.get("content", "")
-                })
+                message_list.append(
+                    {
+                        "type": "function_call_output",
+                        "call_id": tool_call_id,
+                        "output": msg.get("content", ""),
+                    }
+                )
 
         return system_content, message_list
 
@@ -90,16 +98,16 @@ class OpenAIResponsesClient(BaseLLMClient):
     ) -> List[Dict[str, Any]]:
         """
         Convert tools from Chat Completions format to Responses API format.
-        
+
         Args:
             tools: List of tool definitions in OpenAI Chat Completions format
-        
+
         Returns:
             List of tools in Responses API format
         """
         if not tools:
             return []
-        
+
         responses_tools = []
         for tool in tools:
             if tool["type"] == "function" and "function" in tool:
@@ -109,20 +117,24 @@ class OpenAIResponsesClient(BaseLLMClient):
                     "type": "function",
                     "name": function_name,
                     "description": tool["function"].get("description", ""),
-                    "parameters": tool["function"].get("parameters", {})
+                    "parameters": tool["function"].get("parameters", {}),
                 }
-                
+
                 # Ensure parameters is properly formatted
-                if "parameters" in responses_tool and isinstance(responses_tool["parameters"], dict):
+                if "parameters" in responses_tool and isinstance(
+                    responses_tool["parameters"], dict
+                ):
                     if "type" not in responses_tool["parameters"]:
                         responses_tool["parameters"]["type"] = "object"
-                    
-                    if (responses_tool["parameters"].get("type") == "object" and 
-                            "properties" not in responses_tool["parameters"]):
+
+                    if (
+                        responses_tool["parameters"].get("type") == "object"
+                        and "properties" not in responses_tool["parameters"]
+                    ):
                         responses_tool["parameters"]["properties"] = {}
-                
+
                 responses_tools.append(responses_tool)
-        
+
         return responses_tools
 
     def _normalize_responses_response(self, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -142,20 +154,21 @@ class OpenAIResponsesClient(BaseLLMClient):
             # Extract text content if present
             if hasattr(data, "output_text") and data.output_text is not None:
                 normalized_response["content"] = data.output_text
-            
+
             # Extract tool calls from output array
             output_items = getattr(data, "output", None)
             if output_items:
                 tool_calls = []
-                
+
                 # Process each output item
                 for i, item in enumerate(output_items):
                     # Check for function_call items
                     is_function_call = (
-                        (hasattr(item, "type") and item.type == "function_call") or
-                        (isinstance(item, dict) and item.get("type") == "function_call")
+                        hasattr(item, "type") and item.type == "function_call"
+                    ) or (
+                        isinstance(item, dict) and item.get("type") == "function_call"
                     )
-                    
+
                     if is_function_call:
                         # Extract function call data
                         if hasattr(item, "type"):
@@ -166,41 +179,52 @@ class OpenAIResponsesClient(BaseLLMClient):
                             call_id = item.get("call_id", f"call_{i}")
                             name = item.get("name", "unknown_function")
                             arguments = item.get("arguments", "{}")
-                        
+
                         # Ensure arguments is a string
                         if not isinstance(arguments, str):
                             try:
                                 arguments = json.dumps(arguments)
                             except:
                                 arguments = str(arguments)
-                        
+
                         # Add properly formatted tool call
-                        tool_calls.append({
-                            "id": call_id,
-                            "type": "function",
-                            "function": {
-                                "name": name,
-                                "arguments": arguments,
+                        tool_calls.append(
+                            {
+                                "id": call_id,
+                                "type": "function",
+                                "function": {
+                                    "name": name,
+                                    "arguments": arguments,
+                                },
                             }
-                        })
-                
+                        )
+
                 # Add tool calls to response and ensure empty content
                 if tool_calls:
                     normalized_response["tool_calls"] = tool_calls
                     normalized_response["content"] = ""
-            
+
             # Ensure we have a valid fallback content if needed
-            if not normalized_response.get("content") and "tool_calls" not in normalized_response:
-                normalized_response["content"] = "I'm sorry, but I couldn't process your request properly."
-                
+            if (
+                not normalized_response.get("content")
+                and "tool_calls" not in normalized_response
+            ):
+                normalized_response["content"] = (
+                    "I'm sorry, but I couldn't process your request properly."
+                )
+
         except Exception as e:
-            logging.error(f"Error normalizing Responses API response: {e}", exc_info=True)
-            normalized_response["content"] = f"Error processing model response: {str(e)}"
+            logging.error(
+                f"Error normalizing Responses API response: {e}", exc_info=True
+            )
+            normalized_response["content"] = (
+                f"Error processing model response: {str(e)}"
+            )
 
         # Final safety check for content (critical for orchestrator compatibility)
         if normalized_response.get("content") is None:
             normalized_response["content"] = ""
-            
+
         return normalized_response
 
     def get_response(
@@ -225,35 +249,35 @@ class OpenAIResponsesClient(BaseLLMClient):
             Response message in OpenAI Chat Completions format for compatibility
         """
         logging.debug(f"Sending request to Responses API with model {self.model_name}")
-        
+
         try:
             # Import the OpenAI client
             try:
                 from openai import OpenAI
             except ImportError:
-                logging.error("OpenAI Python package is not installed. Please install it with: pip install openai>=1.0.0")
+                logging.error(
+                    "OpenAI Python package is not installed. Please install it with: pip install openai>=1.0.0"
+                )
                 return {
                     "role": "assistant",
-                    "content": "Error: OpenAI Python package is not installed. Please install it with: pip install openai>=1.0.0",
+                    "content": "Error: OpenAI Python package is not installed. Please install it with: uv pip install openai>=1.0.0",
                 }
 
             # Create OpenAI client with proper base URL
-            base_url = self.api_url
-            if base_url.endswith("/v1/chat/completions"):
-                base_url = base_url.replace("/v1/chat/completions", "")
-                
-            openai_client = OpenAI(api_key=self.api_key, base_url=base_url)
-            
+            openai_client = OpenAI(api_key=self.api_key, base_url=self.api_url)
+
             # Convert messages to Responses API format
-            instructions, input_messages = self._convert_messages_to_responses_format(messages)
-            
+            instructions, input_messages = self._convert_messages_to_responses_format(
+                messages
+            )
+
             # Prepare API parameters
             params = {
                 "model": self.model_name,
                 "parallel_tool_calls": True,
                 "input": input_messages,
             }
-            
+
             # Add temperature if not using o4-mini (which doesn't support it)
             if not self.model_name.startswith("o4-mini"):
                 params["temperature"] = temperature
@@ -261,33 +285,37 @@ class OpenAIResponsesClient(BaseLLMClient):
             # Add instructions with tool usage guidance
             if instructions:
                 tool_instruction = "IMPORTANT: When specialized tools are available, you MUST use them instead of calculating or generating information yourself."
-                params["instructions"] = instructions + "\n\n" + tool_instruction if isinstance(instructions, str) else tool_instruction
-            
+                params["instructions"] = (
+                    instructions + "\n\n" + tool_instruction
+                    if isinstance(instructions, str)
+                    else tool_instruction
+                )
+
             # Add tools if present
             if tools:
                 params["tools"] = self._convert_tools_to_responses_format(tools)
                 params["tool_choice"] = "auto"  # Encourage tool usage
-            
+
             # Add max tokens if specified
             if max_tokens:
                 params["max_output_tokens"] = max_tokens
 
             # Make the API call
             response = openai_client.responses.create(**params)
-            
+
             # Normalize and return the response
             try:
                 normalized_response = self._normalize_responses_response(response)
-                
+
                 # Ensure required fields are present
                 if "role" not in normalized_response:
                     normalized_response["role"] = "assistant"
-                
+
                 if normalized_response.get("content") is None:
                     normalized_response["content"] = ""
-                
+
                 return normalized_response
-                
+
             except Exception as e:
                 logging.error(f"Failed to normalize response: {e}", exc_info=True)
                 return {
