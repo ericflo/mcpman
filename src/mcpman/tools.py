@@ -7,10 +7,10 @@ from typing import Dict, Any, List, Optional, Tuple
 def sanitize_name(name: str) -> str:
     """
     Sanitize a name to be a valid identifier.
-    
+
     Args:
         name: Input name to sanitize
-        
+
     Returns:
         Sanitized name with non-alphanumeric characters replaced with underscores
     """
@@ -27,7 +27,7 @@ def sanitize_name(name: str) -> str:
 class Tool:
     """
     Represents a tool with its properties and formatting capabilities.
-    
+
     A tool is a function that can be called by an LLM to perform an action.
     Each tool has a name, description, and input schema.
     """
@@ -41,7 +41,7 @@ class Tool:
     ) -> None:
         """
         Initialize a Tool instance.
-        
+
         Args:
             name: Prefixed tool name (e.g., "calculator_add")
             description: Human-readable description of what the tool does
@@ -56,12 +56,12 @@ class Tool:
     def to_openai_schema(self) -> Dict[str, Any]:
         """
         Format the tool definition for the OpenAI API 'tools' parameter.
-        
+
         Returns:
             Dictionary matching OpenAI's tool schema format
         """
         parameters_schema = {"type": "object", "properties": {}, "required": []}
-        
+
         if isinstance(self.input_schema, dict):
             # Extract and sanitize properties
             input_props = self.input_schema.get("properties")
@@ -80,11 +80,15 @@ class Tool:
                                     # Use the first prefix item's type as the items type
                                     # or fallback to string if can't determine
                                     first_type = "string"
-                                    if (isinstance(fixed_prop.get("prefixItems"), list) and 
-                                        len(fixed_prop["prefixItems"]) > 0 and
-                                        "type" in fixed_prop["prefixItems"][0]):
-                                        first_type = fixed_prop["prefixItems"][0]["type"]
-                                    
+                                    if (
+                                        isinstance(fixed_prop.get("prefixItems"), list)
+                                        and len(fixed_prop["prefixItems"]) > 0
+                                        and "type" in fixed_prop["prefixItems"][0]
+                                    ):
+                                        first_type = fixed_prop["prefixItems"][0][
+                                            "type"
+                                        ]
+
                                     fixed_prop["items"] = {"type": first_type}
                                 sanitized_props[name] = fixed_prop
                                 logging.info(
@@ -117,7 +121,7 @@ class Tool:
                                 f"Property '{name}' in tool '{self.name}' schema missing type, defaulting to string."
                             )
                 parameters_schema["properties"] = sanitized_props
-            
+
             # Extract required fields
             input_required = self.input_schema.get("required")
             if isinstance(input_required, list):
@@ -136,7 +140,7 @@ class Tool:
                 "parameters": parameters_schema,
             },
         }
-        
+
         logging.debug(
             f"Generated OpenAI schema for tool '{self.name}': {json.dumps(tool_schema)}"
         )
@@ -144,23 +148,22 @@ class Tool:
 
 
 def parse_tool_call(
-    tool_call: Dict[str, Any], 
-    prefixed_tool_name: Optional[str] = None
+    tool_call: Dict[str, Any], prefixed_tool_name: Optional[str] = None
 ) -> Tuple[Optional[str], Optional[str], Dict[str, Any]]:
     """
     Parse a tool call from the LLM response.
-    
+
     Args:
         tool_call: Tool call object from the LLM response
         prefixed_tool_name: Optional prefixed tool name (if already known)
-        
+
     Returns:
         Tuple of (server_name, tool_name, arguments)
     """
     # Extract tool call details
     if not prefixed_tool_name:
         prefixed_tool_name = tool_call["function"]["name"]
-    
+
     # Parse arguments
     try:
         arguments_str = tool_call["function"]["arguments"]
@@ -168,14 +171,14 @@ def parse_tool_call(
     except json.JSONDecodeError as e:
         logging.error(f"Error decoding arguments JSON for {prefixed_tool_name}: {e}")
         arguments = {}
-    
+
     # Parse server and tool names from the prefixed name
     server_name = None
     tool_name = None
-    
+
     # The splitting logic might depend on your naming convention
     parts = prefixed_tool_name.split("_", 1)
     if len(parts) == 2:
         server_name, tool_name = parts
-    
+
     return server_name, tool_name, arguments

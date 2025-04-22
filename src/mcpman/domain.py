@@ -1,8 +1,8 @@
 """
-Core models for MCPMan.
+Domain models for MCPMan.
 
-This module contains simplified data models that represent the core concepts
-used throughout the application.
+This module contains the core domain objects used throughout the application,
+providing proper encapsulation and behavior for key concepts.
 """
 
 from typing import Dict, List, Any, Optional, Union
@@ -55,12 +55,12 @@ class ToolCall:
 class ToolResult:
     """Represents the result of a tool execution."""
 
-    tool_call_id: str
-    name: str
-    content: str
+    role: str = "tool"
+    tool_call_id: str = ""
+    name: str = ""
+    content: str = ""
     success: bool = True
     execution_time_ms: float = 0
-    role: str = "tool"
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary (OpenAI format)."""
@@ -131,6 +131,7 @@ class Conversation:
     """Manages the conversation state and message history."""
 
     messages: List[Message] = field(default_factory=list)
+    system_message: Optional[str] = None
 
     def __init__(
         self, system_message: Optional[str] = None, user_prompt: Optional[str] = None
@@ -138,19 +139,51 @@ class Conversation:
         self.messages = []
 
         if system_message:
-            self.add_message(Message(role="system", content=system_message))
+            self.add_system_message(system_message)
 
         if user_prompt:
-            self.add_message(Message(role="user", content=user_prompt))
+            self.add_user_message(user_prompt)
 
     def add_message(self, message: Message) -> None:
         """Add a message to the conversation."""
         self.messages.append(message)
 
+    def add_system_message(self, content: str) -> None:
+        """Add a system message to the conversation."""
+        self.messages.append(Message(role="system", content=content))
+        self.system_message = content
+
     def add_user_message(self, content: str) -> None:
         """Add a user message to the conversation."""
         self.messages.append(Message(role="user", content=content))
 
+    def add_assistant_message(
+        self, content: Optional[str] = None, tool_calls: List[ToolCall] = None
+    ) -> None:
+        """Add an assistant message to the conversation."""
+        self.messages.append(
+            Message(role="assistant", content=content, tool_calls=tool_calls or [])
+        )
+
+    def add_tool_result(self, result: ToolResult) -> None:
+        """Add a tool result to the conversation."""
+        self.messages.append(
+            Message(
+                role=result.role,
+                content=result.content,
+                tool_call_id=result.tool_call_id,
+                name=result.name,
+            )
+        )
+
     def to_dict_list(self) -> List[Dict[str, Any]]:
         """Convert the conversation to a list of dictionaries."""
         return [m.to_dict() for m in self.messages]
+
+    @classmethod
+    def from_dict_list(cls, messages: List[Dict[str, Any]]):
+        """Create a Conversation from a list of message dictionaries."""
+        conversation = cls()
+        for msg_dict in messages:
+            conversation.add_message(Message.from_dict(msg_dict))
+        return conversation

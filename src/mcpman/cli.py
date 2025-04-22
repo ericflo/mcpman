@@ -371,6 +371,13 @@ def parse_args() -> argparse.Namespace:
         default=2048,
         help="Maximum number of turns for the agent loop (default: 2048).",
     )
+    
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=180.0,
+        help="Request timeout in seconds for LLM API calls (default: 180.0).",
+    )
     parser.add_argument(
         "-s",
         "--system",
@@ -469,6 +476,7 @@ async def main() -> None:
         api_url=args.base_url,
         api_key=args.api_key,
         model_name=args.model,
+        timeout=args.timeout,
     )
 
     # Validate configuration
@@ -490,6 +498,7 @@ async def main() -> None:
     print(f"  Implementation: {args.impl or 'custom'}")
     print(f"  Model: {provider_config['model']}")
     print(f"  API URL: {provider_config['url']}")
+    print(f"  Timeout: {provider_config.get('timeout', 180.0)}s")
     print(f"  Server Config: {args.config}")
     print("-------------------------")
 
@@ -508,6 +517,7 @@ async def main() -> None:
 
     # Initialize servers and run the agent
     try:
+        # Add provider name to the parameters
         await initialize_and_run(
             config_path=args.config,
             user_prompt=user_prompt,
@@ -518,6 +528,7 @@ async def main() -> None:
             max_turns=args.max_turns,
             verify_completion=verify_completion,
             verification_prompt=verification_prompt,
+            provider_name=args.impl,  # Pass the provider name
         )
     finally:
         # Log completion of execution even if there were exceptions

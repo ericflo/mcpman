@@ -11,6 +11,10 @@ OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_DEFAULT_MODEL = "gpt-4.1-nano"
 
+ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+ANTHROPIC_DEFAULT_MODEL = "claude-3-7-sonnet-20250219"
+
 LMSTUDIO_API_URL = "http://127.0.0.1:1234/v1/chat/completions"
 LMSTUDIO_DEFAULT_MODEL = "qwen2.5-7b-instruct-1m"
 
@@ -47,6 +51,11 @@ PROVIDERS = {
         "url": OPENAI_API_URL,
         "key": OPENAI_API_KEY,
         "default_model": OPENAI_DEFAULT_MODEL,
+    },
+    "anthropic": {
+        "url": ANTHROPIC_API_URL,
+        "key": ANTHROPIC_API_KEY,
+        "default_model": ANTHROPIC_DEFAULT_MODEL,
     },
     "lmstudio": {
         "url": LMSTUDIO_API_URL,
@@ -152,6 +161,7 @@ def get_llm_configuration(
     api_url: Optional[str] = None,
     api_key: Optional[str] = None,
     model_name: Optional[str] = None,
+    timeout: Optional[float] = None,
 ) -> Dict[str, str]:
     """
     Determine the LLM configuration based on provided parameters and environment variables.
@@ -161,14 +171,16 @@ def get_llm_configuration(
         api_url: Custom API URL for the LLM
         api_key: API key for the LLM
         model_name: Name of the model to use
+        timeout: Request timeout in seconds
         
     Returns:
-        Dictionary with "url", "key", and "model" keys
+        Dictionary with "url", "key", "model", and "timeout" keys
     """
     result = {
         "url": None,
         "key": None,
-        "model": None
+        "model": None,
+        "timeout": timeout or 180.0  # Default to 3 minutes
     }
     
     # Provider-based configuration

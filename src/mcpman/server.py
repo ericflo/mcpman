@@ -14,7 +14,7 @@ from .tools import Tool, sanitize_name
 class Server:
     """
     Manages MCP server connections and tool execution.
-    
+
     Handles:
     - Server initialization and connection
     - Tool discovery and caching
@@ -24,7 +24,7 @@ class Server:
     def __init__(self, name: str, config: Dict[str, Any]) -> None:
         """
         Initialize a Server instance.
-        
+
         Args:
             name: Name of the server
             config: Server configuration dictionary
@@ -39,10 +39,10 @@ class Server:
     async def initialize(self) -> Any:
         """
         Prepare server parameters and return the stdio_client context manager.
-        
+
         Returns:
             The stdio_client context manager
-            
+
         Raises:
             ValueError: If the command is invalid
         """
@@ -52,7 +52,7 @@ class Server:
             if self.config["command"] == "npx"
             else self.config["command"]
         )
-        
+
         if command is None:
             raise ValueError("The command must be a valid string and cannot be None.")
 
@@ -64,24 +64,24 @@ class Server:
                 {**os.environ, **self.config["env"]} if self.config.get("env") else None
             ),
         )
-        
+
         # Return the context manager instance
         return stdio_client(server_params)
 
     async def list_tools(self) -> List[Tool]:
         """
         List available tools from the server and cache them.
-        
+
         Returns:
             List of Tool instances
-            
+
         Raises:
             RuntimeError: If the server session is not initialized
         """
         # Check if session is initialized
         if not self.session:
             raise RuntimeError(f"Server {self.name} session not initialized")
-        
+
         # Return cached tools if already fetched
         if self.tools is not None:
             logging.debug(f"Returning cached tools for {self.name}.")
@@ -91,7 +91,7 @@ class Server:
         logging.debug(f"Fetching tools from {self.name}...")
         tools_response = await self.session.list_tools()
         fetched_tools = []
-        
+
         for item in tools_response:
             if isinstance(item, tuple) and item[0] == "tools":
                 sanitized_server_name = sanitize_name(self.name)
@@ -104,7 +104,7 @@ class Server:
                     )
                     for tool in item[1]
                 )
-        
+
         # Cache the fetched tools
         self.tools = fetched_tools
         logging.debug(f"Cached {len(self.tools)} tools for {self.name}.")
@@ -113,10 +113,10 @@ class Server:
     def get_tool_schema(self, original_tool_name: str) -> Optional[Dict[str, Any]]:
         """
         Get the input schema for a specific tool by its original name.
-        
+
         Args:
             original_tool_name: Original name of the tool (without server prefix)
-            
+
         Returns:
             Input schema dictionary or None if tool not found
         """
@@ -143,14 +143,14 @@ class Server:
     ) -> Any:
         """
         Execute a tool.
-        
+
         Args:
             tool_name: Name of the tool to execute (original name without prefix)
             arguments: Tool arguments
-            
+
         Returns:
             Tool execution result
-            
+
         Raises:
             RuntimeError: If server session is not initialized
             Exception: From self.session.call_tool if execution fails
@@ -166,10 +166,10 @@ class Server:
 async def setup_servers(server_config: Dict[str, Any]) -> List[Server]:
     """
     Initialize all servers defined in the configuration.
-    
+
     Args:
         server_config: Server configuration dictionary
-        
+
     Returns:
         List of initialized Server instances
     """
@@ -177,13 +177,13 @@ async def setup_servers(server_config: Dict[str, Any]) -> List[Server]:
         Server(name, srv_config)
         for name, srv_config in server_config.get("mcpServers", {}).items()
     ]
-    
+
     if not servers_to_init:
         logging.error("No mcpServers defined in the configuration file.")
         return []
 
     initialized_servers: List[Server] = []
-    
+
     # AsyncExitStack would be used in the calling code to manage contexts
-    
+
     return servers_to_init  # Return servers to be initialized in the orchestrator

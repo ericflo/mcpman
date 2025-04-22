@@ -11,13 +11,13 @@ from .base import BaseLLMClient
 class OpenAICompatClient(BaseLLMClient):
     """
     Client for OpenAI and OpenAI-compatible APIs (e.g., Together, DeepInfra, Groq).
-    
+
     Works with any provider that implements the OpenAI Chat Completions API format.
     """
 
     def get_response(
-        self, 
-        messages: List[Dict[str, Any]], 
+        self,
+        messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
@@ -25,14 +25,14 @@ class OpenAICompatClient(BaseLLMClient):
     ) -> Dict[str, Any]:
         """
         Get a response message object from the LLM using OpenAI-compatible API.
-        
+
         Args:
             messages: List of message objects to send to the LLM
             tools: Optional list of tool definitions
             temperature: Sampling temperature for the LLM
             max_tokens: Maximum number of tokens for the response
             tool_choice: Optional specification for tool selection behavior
-            
+
         Returns:
             Response message object from the LLM in standard OpenAI format
         """
@@ -45,20 +45,20 @@ class OpenAICompatClient(BaseLLMClient):
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.api_key}",
         }
-        
+
         payload = {
             "messages": messages,
             "model": self.model_name,
             "temperature": temperature,
         }
-        
+
         # Add optional parameters
         if max_tokens:
             payload["max_tokens"] = max_tokens
-            
+
         if tools:
             payload["tools"] = tools
-            
+
             # Add tool_choice if provided
             if tool_choice:
                 payload["tool_choice"] = tool_choice
@@ -85,25 +85,25 @@ class OpenAICompatClient(BaseLLMClient):
                 logging.debug(
                     f"Received response from LLM: Status {response.status_code}"
                 )
-                
+
                 # If there's an error, log the response body
                 if response.status_code >= 400:
                     try:
                         error_json = response.json()
                         error_message = f"API Error ({response.status_code}): {json.dumps(error_json, indent=2)}"
                         logging.error(error_message)
-                        print("\n" + "="*80, file=sys.stderr)
+                        print("\n" + "=" * 80, file=sys.stderr)
                         print(error_message, file=sys.stderr)
-                        print("="*80 + "\n", file=sys.stderr)
+                        print("=" * 80 + "\n", file=sys.stderr)
                     except Exception as e:
                         error_text = f"Raw error response: {response.text}"
                         logging.error(f"Error parsing error response: {e}")
                         logging.error(error_text)
-                        print("\n" + "="*80, file=sys.stderr)
+                        print("\n" + "=" * 80, file=sys.stderr)
                         print(f"Failed to parse error JSON: {e}", file=sys.stderr)
                         print(error_text, file=sys.stderr)
-                        print("="*80 + "\n", file=sys.stderr)
-                
+                        print("=" * 80 + "\n", file=sys.stderr)
+
                 response.raise_for_status()
 
                 # Parse the response
@@ -117,13 +117,13 @@ class OpenAICompatClient(BaseLLMClient):
 
                 # Get the message in OpenAI format (already standardized)
                 message = data["choices"][0]["message"]
-                
+
                 # Validate the message format has required fields
                 if "role" not in message:
                     message["role"] = "assistant"
                 if "content" not in message and "tool_calls" not in message:
                     message["content"] = ""
-                    
+
                 logging.debug(f"OpenAI response object: {message}")
                 return message
 

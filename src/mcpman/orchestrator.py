@@ -22,88 +22,106 @@ from .models import Conversation, Message, ToolCall, ToolResult
 
 class Orchestrator:
     """Main orchestrator for the agent loop."""
-    
-    def __init__(self, default_verification_message: str = DEFAULT_VERIFICATION_MESSAGE):
+
+    def __init__(
+        self, default_verification_message: str = DEFAULT_VERIFICATION_MESSAGE
+    ):
         self.verification_message = default_verification_message
-    
-    async def _execute_tool(self, tool_call: ToolCall, servers: List[Server]) -> ToolResult:
+
+    async def _execute_tool(
+        self, tool_call: ToolCall, servers: List[Server]
+    ) -> ToolResult:
         """Execute a single tool call and return the result."""
         prefixed_tool_name = tool_call.function_name
-        
+
         # Parse the tool name to extract server name and original tool name
         target_server_name = None
         original_tool_name = None
-        
+
         # Sort server names by length (descending) to handle potential prefix conflicts
         sanitized_server_names = sorted(
             [sanitize_name(s.name) for s in servers], key=len, reverse=True
         )
-        
+
         # Find the server prefix
         for s_name in sanitized_server_names:
             prefix = f"{s_name}_"
             if prefixed_tool_name.startswith(prefix):
                 target_server_name = s_name
-                original_tool_name = prefixed_tool_name[len(prefix):]
+                original_tool_name = prefixed_tool_name[len(prefix) :]
                 break
-        
+
         # Update the tool call with parsed information
         tool_call.server_name = target_server_name
         tool_call.original_tool_name = original_tool_name
-        
+
         # Handle parsing failures
         if not target_server_name or not original_tool_name:
-            logging.error(f"Could not parse server and tool name from '{prefixed_tool_name}'")
+            logging.error(
+                f"Could not parse server and tool name from '{prefixed_tool_name}'"
+            )
             return ToolResult(
                 tool_call_id=tool_call.id,
                 name=prefixed_tool_name,
                 content=f"Error: Invalid prefixed tool name format '{prefixed_tool_name}'",
-                success=False
+                success=False,
             )
-        
+
         # Find the target server
         target_server = next(
             (s for s in servers if sanitize_name(s.name) == target_server_name), None
         )
-        
+
         # Handle server not found
         if not target_server:
-            logging.warning(f"Target server '{target_server_name}' for tool '{prefixed_tool_name}' not found.")
+            logging.warning(
+                f"Target server '{target_server_name}' for tool '{prefixed_tool_name}' not found."
+            )
             return ToolResult(
                 tool_call_id=tool_call.id,
                 name=prefixed_tool_name,
                 content=f"Error: Server '{target_server_name}' (sanitized) not found.",
-                success=False
+                success=False,
             )
-        
+
         # Log the tool call
-        print(f"-> Calling tool: {prefixed_tool_name}({tool_call.arguments})", flush=True)
-        logging.info(f"Executing tool: {prefixed_tool_name}", 
-                    extra={"event": "tool_call", "tool": prefixed_tool_name})
-        
+        print(
+            f"-> Calling tool: {prefixed_tool_name}({tool_call.arguments})", flush=True
+        )
+        logging.info(
+            f"Executing tool: {prefixed_tool_name}",
+            extra={"event": "tool_call", "tool": prefixed_tool_name},
+        )
+
         # Initialize execution tracking
         execution_result_content = f"Error: Tool '{original_tool_name}' execution failed on server '{target_server.name}'."
         execution_time_ms = 0
-        
+
         # Execute the tool with timing measurements
         start_time = time.time()
-        
+
         try:
-            tool_output = await target_server.execute_tool(original_tool_name, tool_call.arguments)
-            
+            tool_output = await target_server.execute_tool(
+                original_tool_name, tool_call.arguments
+            )
+
             # Capture execution time
             execution_time_ms = (time.time() - start_time) * 1000
-            
+
             # Format the result
             if hasattr(tool_output, "isError") and tool_output.isError:
                 error_detail = getattr(tool_output, "content", "Unknown tool error")
-                logging.warning(f"Tool '{prefixed_tool_name}' reported an error: {error_detail}")
-                
+                logging.warning(
+                    f"Tool '{prefixed_tool_name}' reported an error: {error_detail}"
+                )
+
                 # Check if it's an 'unknown tool' error
                 if "Unknown tool" in str(error_detail):
                     execution_result_content = f"Error: Tool '{original_tool_name}' not found on server '{target_server_name}'."
                 else:
-                    execution_result_content = f"Error: Tool execution failed: {error_detail}"
+                    execution_result_content = (
+                        f"Error: Tool execution failed: {error_detail}"
+                    )
             elif hasattr(tool_output, "content") and tool_output.content:
                 text_parts = [c.text for c in tool_output.content if hasattr(c, "text")]
                 if text_parts:
@@ -117,30 +135,41 @@ class Orchestrator:
                     execution_result_content = json.dumps(tool_output)
                 except Exception:
                     execution_result_content = str(tool_output)
-            
+
         except Exception as e:
-            logging.error(f"Exception executing tool '{prefixed_tool_name}': {e}", exc_info=True)
+            logging.error(
+                f"Exception executing tool '{prefixed_tool_name}': {e}", exc_info=True
+            )
             execution_result_content = f"Error: Tool execution failed: {e}"
             execution_time_ms = (time.time() - start_time) * 1000
-        
+
         # Log the tool response
-        print(f"<- Tool Response [{prefixed_tool_name}]: {execution_result_content}", flush=True)
-        
-        logging.info(f"Tool response: {prefixed_tool_name}", 
-                    extra={"event": "tool_response", 
-                          "success": not execution_result_content.startswith("Error:"),
-                          "time_ms": round(execution_time_ms)})
-        
+        print(
+            f"<- Tool Response [{prefixed_tool_name}]: {execution_result_content}",
+            flush=True,
+        )
+
+        logging.info(
+            f"Tool response: {prefixed_tool_name}",
+            extra={
+                "event": "tool_response",
+                "success": not execution_result_content.startswith("Error:"),
+                "time_ms": round(execution_time_ms),
+            },
+        )
+
         # Create and return the tool result
         return ToolResult(
             tool_call_id=tool_call.id,
             name=prefixed_tool_name,
             content=str(execution_result_content),
             success=not execution_result_content.startswith("Error:"),
-            execution_time_ms=execution_time_ms
+            execution_time_ms=execution_time_ms,
         )
-    
-    async def _execute_tools(self, tool_calls: List[ToolCall], servers: List[Server]) -> List[ToolResult]:
+
+    async def _execute_tools(
+        self, tool_calls: List[ToolCall], servers: List[Server]
+    ) -> List[ToolResult]:
         """Execute multiple tool calls and return the results."""
         results = []
         for tool_call in tool_calls:
@@ -149,18 +178,22 @@ class Orchestrator:
                 results.append(result)
             else:
                 logging.warning(f"Unsupported tool call type: {tool_call.type}")
-                results.append(ToolResult(
-                    tool_call_id=tool_call.id,
-                    name=tool_call.function_name,
-                    content=f"Error: Unsupported tool type '{tool_call.type}'",
-                    success=False
-                ))
+                results.append(
+                    ToolResult(
+                        tool_call_id=tool_call.id,
+                        name=tool_call.function_name,
+                        content=f"Error: Unsupported tool type '{tool_call.type}'",
+                        success=False,
+                    )
+                )
         return results
-    
-    def _create_verification_request(self, conversation: Conversation, custom_prompt: Optional[str] = None) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+
+    def _create_verification_request(
+        self, conversation: Conversation, custom_prompt: Optional[str] = None
+    ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         """Create a verification request for the LLM."""
         verification_message = custom_prompt or self.verification_message
-        
+
         # Define schema for verify_completion function
         verification_schema = [
             {
@@ -198,7 +231,7 @@ class Orchestrator:
                 },
             }
         ]
-        
+
         # Create serializable messages for verification
         serializable_messages = []
         for msg in conversation.messages:
@@ -213,7 +246,7 @@ class Orchestrator:
                 else:
                     msg_copy[key] = value
             serializable_messages.append(msg_copy)
-        
+
         # Format the verification request
         verification_messages = [
             {"role": "system", "content": verification_message},
@@ -224,71 +257,86 @@ class Orchestrator:
                 + json.dumps(serializable_messages, indent=2),
             },
         ]
-        
+
         return verification_messages, verification_schema
-    
+
     async def _verify_completion(
         self,
         conversation: Conversation,
         llm_client: LLMClient,
         verification_prompt: Optional[str] = None,
-        temperature: float = 0.4
+        temperature: float = 0.4,
     ) -> Tuple[bool, str]:
         """Verify if the task has been completed successfully."""
         try:
             # Create verification request
-            verification_messages, verification_schema = self._create_verification_request(
-                conversation, verification_prompt
+            verification_messages, verification_schema = (
+                self._create_verification_request(conversation, verification_prompt)
             )
-            
+
             # Call the LLM with the verification tool
             verification_response = llm_client.get_response(
                 verification_messages,
                 verification_schema,
                 temperature=temperature,
-                tool_choice={"type": "function", "function": {"name": "verify_completion"}},
+                tool_choice={
+                    "type": "function",
+                    "function": {"name": "verify_completion"},
+                },
             )
-            
+
             # Extract the verification result
             verification_result = None
-            if "tool_calls" in verification_response and verification_response["tool_calls"]:
+            if (
+                "tool_calls" in verification_response
+                and verification_response["tool_calls"]
+            ):
                 tool_call = verification_response["tool_calls"][0]
                 if tool_call["function"]["name"] != "verify_completion":
                     return False, "Verification failed: Wrong function called."
                 verification_result = json.loads(tool_call["function"]["arguments"])
-            
+
             # If no result found
             if not verification_result:
-                return False, "Verification failed: Could not determine if task is complete."
-            
+                return (
+                    False,
+                    "Verification failed: Could not determine if task is complete.",
+                )
+
             # Check completion status
             is_complete = verification_result.get("is_complete", False)
-            
+
             # Format feedback based on completion status
             if is_complete:
-                feedback = verification_result.get("summary", "Task completed successfully.")
+                feedback = verification_result.get(
+                    "summary", "Task completed successfully."
+                )
             else:
                 missing_steps = verification_result.get("missing_steps", [])
-                missing_steps_str = ", ".join(missing_steps) if missing_steps else "Unknown missing steps"
+                missing_steps_str = (
+                    ", ".join(missing_steps)
+                    if missing_steps
+                    else "Unknown missing steps"
+                )
                 suggestions = verification_result.get("suggestions", "")
                 feedback = f"The task is not yet complete. Missing: {missing_steps_str}. {suggestions}"
-            
+
             # Log verification result (simplified)
             logging.info(
                 "Task verification result",
                 extra={
                     "event": "verification",
                     "is_complete": is_complete,
-                    "feedback": feedback
-                }
+                    "feedback": feedback,
+                },
             )
-            
+
             return is_complete, feedback
-            
+
         except Exception as e:
             logging.error(f"Error during task verification: {e}", exc_info=True)
             return False, f"Verification error: {str(e)}"
-    
+
     async def run_agent(
         self,
         prompt: str,
@@ -304,7 +352,7 @@ class Orchestrator:
         """Run the agent loop with tools and optional verification."""
         # Initialize conversation
         conversation = Conversation(system_message=system_message, user_prompt=prompt)
-        
+
         # Prepare tools for the API
         all_tools = []
         for server in servers:
@@ -313,21 +361,21 @@ class Orchestrator:
                 all_tools.extend(server_tools)
             except Exception as e:
                 logging.warning(f"Failed to list tools for server {server.name}: {e}")
-        
+
         # Convert tools to OpenAI schema
         openai_tools = [tool.to_openai_schema() for tool in all_tools]
         logging.debug(f"Prepared {len(openai_tools)} tools for the API.")
-        
+
         # Get the event loop
         loop = asyncio.get_running_loop()
-        
+
         # Run the agent loop
         for turn in range(max_turns):
             logging.debug(f"--- Turn {turn + 1} ---")
-            
+
             # Get LLM response
             start_time = datetime.datetime.now()
-            
+
             # Call the LLM
             assistant_response_dict = await loop.run_in_executor(
                 None,
@@ -339,16 +387,16 @@ class Orchestrator:
                     tool_choice=None,
                 ),
             )
-            
+
             # Calculate elapsed time
             elapsed_time = (datetime.datetime.now() - start_time).total_seconds()
-            
+
             # Convert the response to a Message object
             assistant_message = Message.from_dict(assistant_response_dict)
-            
+
             # Add the assistant message to the conversation
             conversation.add_message(assistant_message)
-            
+
             # Log the LLM response (simplified)
             logging.info(
                 f"LLM response received ({elapsed_time:.2f}s)",
@@ -357,38 +405,42 @@ class Orchestrator:
                     "has_tool_calls": assistant_message.has_tool_calls,
                     "has_content": assistant_message.content is not None,
                     "response_time": elapsed_time,
-                }
+                },
             )
-            
+
             # Process tool calls if any
             if assistant_message.has_tool_calls:
                 # Execute the tool calls
-                tool_results = await self._execute_tools(assistant_message.tool_calls, servers)
-                
+                tool_results = await self._execute_tools(
+                    assistant_message.tool_calls, servers
+                )
+
                 # Add tool results to conversation
                 for result in tool_results:
-                    conversation.add_message(Message(
-                        role=result.role,
-                        content=result.content,
-                        tool_call_id=result.tool_call_id,
-                        name=result.name
-                    ))
-                
+                    conversation.add_message(
+                        Message(
+                            role=result.role,
+                            content=result.content,
+                            tool_call_id=result.tool_call_id,
+                            name=result.name,
+                        )
+                    )
+
                 # Continue to next turn
                 continue
             else:
                 # No tool calls, check for completion
                 content = assistant_message.content or ""
-                
+
                 # If verification is enabled
                 if verify_completion:
                     print(f"\nPotential Final Answer:\n{content}", flush=True)
                     print("\nVerifying task completion...", flush=True)
-                    
+
                     is_complete, feedback = await self._verify_completion(
                         conversation, llm_client, verification_prompt
                     )
-                    
+
                     if is_complete:
                         # Task is complete
                         print(f"\nVerification PASSED: {feedback}", flush=True)
@@ -403,14 +455,24 @@ class Orchestrator:
                 else:
                     # No verification, assume final answer
                     if content:
-                        print(f"\nFinal Answer (verification disabled):\n{content}", flush=True)
+                        print(
+                            f"\nFinal Answer (verification disabled):\n{content}",
+                            flush=True,
+                        )
                     else:
-                        print("\nFinal Answer (verification disabled): (LLM provided no content)", flush=True)
-                        logging.warning(f"Final assistant message had no content: {assistant_message.to_dict()}")
+                        print(
+                            "\nFinal Answer (verification disabled): (LLM provided no content)",
+                            flush=True,
+                        )
+                        logging.warning(
+                            f"Final assistant message had no content: {assistant_message.to_dict()}"
+                        )
                     break
         else:
             # Max turns reached
-            print("\nWarning: Maximum turns reached without a final answer.", flush=True)
+            print(
+                "\nWarning: Maximum turns reached without a final answer.", flush=True
+            )
             logging.warning("Maximum turns reached without completion")
 
 
@@ -428,7 +490,7 @@ async def initialize_and_run(
 ):
     """
     Initialize servers and run the agent loop.
-    
+
     Args:
         config_path: Path to the server configuration file
         user_prompt: User prompt to execute
@@ -441,27 +503,27 @@ async def initialize_and_run(
         verification_prompt: Custom system message for verification
     """
     from .config import load_server_config
-    
+
     # Load server configuration
     try:
         server_config = load_server_config(config_path)
     except (FileNotFoundError, json.JSONDecodeError) as e:
         logging.error(f"Failed to load server configuration: {e}")
         return
-    
+
     # Create server instances
     servers_to_init = [
         Server(name, srv_config)
         for name, srv_config in server_config.get("mcpServers", {}).items()
     ]
-    
+
     if not servers_to_init:
         logging.error("No mcpServers defined in the configuration file.")
         return
-    
+
     # Initialize servers
     initialized_servers: List[Server] = []
-    
+
     try:
         async with contextlib.AsyncExitStack() as stack:
             # Initialize each server
@@ -469,23 +531,23 @@ async def initialize_and_run(
                 try:
                     logging.debug(f"Initializing server {server.name}...")
                     stdio_client_cm = await server.initialize()
-                    
+
                     # Enter stdio client context manager using the stack
                     read, write = await stack.enter_async_context(stdio_client_cm)
                     server.read = read
                     server.write = write
-                    
+
                     # Create and enter session context manager using the stack
                     from mcp import ClientSession
-                    
+
                     session = ClientSession(read, write)
                     server.session = await stack.enter_async_context(session)
-                    
+
                     # Initialize the session
                     await server.session.initialize()
                     logging.info(f"Server {server.name} initialized successfully.")
                     initialized_servers.append(server)
-                    
+
                     # Print server tools
                     try:
                         server_tools = await server.list_tools()
@@ -506,21 +568,23 @@ async def initialize_and_run(
                         logging.warning(
                             f"Could not list tools for {server.name} after init: {list_tools_e}"
                         )
-                
+
                 except Exception as e:
                     logging.error(
                         f"Failed to initialize server {server.name}: {e}", exc_info=True
                     )
                     return
-            
+
             # Exit if initialization failed
             if not initialized_servers:
                 logging.error("No servers were initialized successfully. Exiting.")
                 return
-            
+
             # Create orchestrator
-            orchestrator = Orchestrator(default_verification_message=DEFAULT_VERIFICATION_MESSAGE)
-            
+            orchestrator = Orchestrator(
+                default_verification_message=DEFAULT_VERIFICATION_MESSAGE
+            )
+
             # Run the agent
             logging.info(f"Running prompt: {user_prompt}")
             # Only print the full prompt in debug mode
@@ -532,7 +596,7 @@ async def initialize_and_run(
                     user_prompt[:50] + "..." if len(user_prompt) > 50 else user_prompt
                 )
                 print(f"Processing request: {short_prompt}")
-            
+
             await orchestrator.run_agent(
                 user_prompt,
                 initialized_servers,
@@ -544,7 +608,7 @@ async def initialize_and_run(
                 verify_completion=verify_completion,
                 verification_prompt=verification_prompt,
             )
-    
+
     except Exception as e:
         logging.error(f"An unexpected error occurred: {e}", exc_info=True)
     finally:
