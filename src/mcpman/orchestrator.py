@@ -137,14 +137,32 @@ def format_llm_response(content: str, is_final: bool = False) -> str:
     title_padding_right = max(1, box_width - title_len - 4 - title_padding_left)
         
     # Format header, title, and footer with precisely calculated width
+    # Create title with color
+    colored_title = f"{Fore.WHITE}{title}{Style.RESET_ALL}"
+    
+    # Calculate exact padding for perfect centering
+    # The box_width includes 2 chars for the left/right borders
+    # We need padding on left and right of the title text
+    usable_width = box_width - 2  # width excluding borders
+    
+    # Calculate padding for exact centering, accounting for title length without ANSI codes
+    title_padding_total = usable_width - len(title)
+    title_padding_left = title_padding_total // 2
+    title_padding_right = title_padding_total - title_padding_left
+    
+    # Make sure we have at least 1 space on each side
+    title_padding_left = max(1, title_padding_left)
+    title_padding_right = max(1, title_padding_right)
+    
+    # Create the borders and lines with proper colors
     if is_final:
         header = f"\n{Fore.GREEN}╔{'═' * (box_width - 2)}╗{Style.RESET_ALL}"
-        title_line = f"{Fore.GREEN}║{' ' * title_padding_left}{Fore.WHITE}{title}{Style.RESET_ALL}{' ' * title_padding_right}{Fore.GREEN}║{Style.RESET_ALL}"
+        title_line = f"{Fore.GREEN}║{' ' * title_padding_left}{colored_title}{' ' * title_padding_right}{Fore.GREEN}║{Style.RESET_ALL}"
         separator = f"{Fore.GREEN}╠{'═' * (box_width - 2)}╣{Style.RESET_ALL}"
         footer = f"{Fore.GREEN}╚{'═' * (box_width - 2)}╝{Style.RESET_ALL}"
     else:
         header = f"\n{Fore.YELLOW}╭{'─' * (box_width - 2)}╮{Style.RESET_ALL}"
-        title_line = f"{Fore.YELLOW}│{' ' * title_padding_left}{Fore.WHITE}{title}{Style.RESET_ALL}{' ' * title_padding_right}{Fore.YELLOW}│{Style.RESET_ALL}"
+        title_line = f"{Fore.YELLOW}│{' ' * title_padding_left}{colored_title}{' ' * title_padding_right}{Fore.YELLOW}│{Style.RESET_ALL}"
         separator = f"{Fore.YELLOW}├{'─' * (box_width - 2)}┤{Style.RESET_ALL}"
         footer = f"{Fore.YELLOW}╰{'─' * (box_width - 2)}╯{Style.RESET_ALL}"
     
@@ -182,19 +200,24 @@ def format_llm_response(content: str, is_final: bool = False) -> str:
     
     # Process each line, including blank lines
     for line in wrapped_content.split('\n'):
-        # Calculate padding precisely based on visible content length (without ANSI colors)
-        line_visible_len = visible_length(line)
+        # Clean and prepare the content
+        clean_line = line.rstrip()
+        colored_content = f"{Fore.WHITE}{clean_line}{Style.RESET_ALL}"
         
-        # Calculate the padding needed for consistent alignment
-        # We need to account for the difference between total and visible length
-        padding_needed = max(0, box_width - line_visible_len - 4)  # -4 for border chars and spacing
-        padding = ' ' * padding_needed
+        # Calculate how much space the visible content takes (excluding ANSI codes)
+        content_with_spaces = f" {colored_content} "  # Space on each side
+        content_visible_len = visible_length(content_with_spaces)
         
-        # Add border characters with proper color based on answer type
+        # Calculate exact padding needed for right border alignment
+        # Box width - 2 (for left/right borders) - visible content length
+        padding_needed = box_width - 2 - content_visible_len
+        padding = ' ' * max(0, padding_needed)
+        
+        # Create the formatted line with precise alignment and proper border characters
         if is_final:
-            content_lines.append(f"{Fore.GREEN}║{Style.RESET_ALL} {Fore.WHITE}{line.rstrip()}{Style.RESET_ALL}{padding} {Fore.GREEN}║{Style.RESET_ALL}")
+            content_lines.append(f"{Fore.GREEN}║{Style.RESET_ALL}{content_with_spaces}{padding}{Fore.GREEN}║{Style.RESET_ALL}")
         else:
-            content_lines.append(f"{Fore.YELLOW}│{Style.RESET_ALL} {Fore.WHITE}{line.rstrip()}{Style.RESET_ALL}{padding} {Fore.YELLOW}│{Style.RESET_ALL}")
+            content_lines.append(f"{Fore.YELLOW}│{Style.RESET_ALL}{content_with_spaces}{padding}{Fore.YELLOW}│{Style.RESET_ALL}")
     
     formatted_content = "\n".join(content_lines)
     
@@ -1012,13 +1035,23 @@ async def initialize_and_run(
                     
                     # Print each line with proper padding to align right border
                     for line in lines:
-                        # Calculate required padding to align the right border
-                        visible_len = visible_length(line)
-                        padding_needed = max(0, box_width - visible_len - 4)  # -4 for border chars and spacing
-                        padding = ' ' * padding_needed
+                        # Strip only trailing whitespace to ensure text alignment is consistent
+                        clean_line = line.rstrip()
                         
-                        # Print line with consistent borders
-                        print(f"{Fore.MAGENTA}│{Style.RESET_ALL} {Fore.WHITE}{line.strip()}{Style.RESET_ALL}{padding} {Fore.MAGENTA}│{Style.RESET_ALL}")
+                        # Color the content
+                        colored_content = f"{Fore.WHITE}{clean_line}{Style.RESET_ALL}"
+                        
+                        # Calculate exact padding needed for right border alignment
+                        line_content = f" {colored_content} "  # Account for spaces around content
+                        line_visible_len = visible_length(line_content)
+                        
+                        # Calculate exactly how much padding is needed for right alignment
+                        # Box width - 2 (for borders) - visible content length
+                        padding_needed = box_width - 2 - line_visible_len
+                        padding = ' ' * max(0, padding_needed)
+                        
+                        # Print with precise border alignment
+                        print(f"{Fore.MAGENTA}│{Style.RESET_ALL}{line_content}{padding}{Fore.MAGENTA}│{Style.RESET_ALL}")
                     
                     print(footer)
                 else:

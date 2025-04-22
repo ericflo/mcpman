@@ -575,6 +575,17 @@ async def main() -> None:
         # Handle potential truncation of long values
         def format_value(value, max_width):
             if len(value) > max_width:
+                # For URLs, find a good breaking point for readability
+                if '/' in value and 'http' in value:
+                    # For URLs, try to break at a logical point like after a domain
+                    parts = value.split('/')
+                    if len(parts) > 3:  # http://domain.com/path
+                        # Keep protocol and domain, then add ... 
+                        base_url = '/'.join(parts[:3]) + '/'
+                        if len(base_url) <= max_width - 3:
+                            return base_url + "..."
+                
+                # For general values, truncate at a clean point
                 return value[:max_width-3] + "..."
             return value
         
