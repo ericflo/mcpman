@@ -5,8 +5,6 @@ It re-exports the factory function from the llm_clients package,
 maintaining backward compatibility while providing enhanced functionality.
 """
 
-from typing import Dict, Optional
-
 from .llm_clients import create_llm_client, BaseLLMClient
 
 # For backward compatibility

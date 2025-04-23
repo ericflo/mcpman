@@ -26,6 +26,11 @@ from .formatting import (
     ProgressSpinner, normalize_text, get_terminal_width, print_box, 
     print_short_prompt, BoxStyle
 )
+from .logger import (
+    get_logger, log_tool_call, log_tool_response, LoggingTimer,
+    log_verification, log_execution_start, log_execution_complete,
+    log_llm_response, CATEGORY_TOOL, CATEGORY_VERIFICATION
+)
 
 
 class Orchestrator:
@@ -92,13 +97,29 @@ class Orchestrator:
                 success=False,
             )
 
-        # Log the tool call
+        # Log the tool call with enhanced logging
         if not output_only:
             formatted_tool_call = format_tool_call(prefixed_tool_name, str(tool_call.arguments))
             print(formatted_tool_call, flush=True)
-        logging.info(
-            f"Executing tool: {prefixed_tool_name}",
-            extra={"event": "tool_call", "tool": prefixed_tool_name},
+            
+        # Get task name from the tool call if available
+        task_name = getattr(tool_call, "task_name", f"Task-{os.getpid()}")
+        run_id = getattr(tool_call, "run_id", None)
+        
+        # Log with enhanced structured logging
+        logger = get_logger()
+        log_tool_call(
+            logger,
+            tool_name=prefixed_tool_name,
+            parameters=tool_call.arguments,
+            taskName=task_name,
+            extra={
+                "run_id": run_id,
+                "tool_call_id": tool_call.id,
+                "server_name": target_server_name,
+                "original_tool_name": original_tool_name,
+                "full_arguments": tool_call.arguments
+            }
         )
 
         # Initialize execution tracking
@@ -151,18 +172,29 @@ class Orchestrator:
             execution_result_content = f"Error: Tool execution failed: {e}"
             execution_time_ms = (time.time() - start_time) * 1000
 
-        # Log the tool response
+        # Log the tool response with enhanced logging
         if not output_only:
             formatted_response = format_tool_response(prefixed_tool_name, execution_result_content)
             print(formatted_response, flush=True)
 
-        logging.info(
-            f"Tool response: {prefixed_tool_name}",
+        # Get logger and log the response with enhanced structured logging
+        success = not execution_result_content.startswith("Error:")
+        logger = get_logger()
+        log_tool_response(
+            logger,
+            tool_name=prefixed_tool_name,
+            response=execution_result_content,
+            success=success,
+            time_ms=round(execution_time_ms),
+            taskName=task_name,
             extra={
-                "event": "tool_response",
-                "success": not execution_result_content.startswith("Error:"),
-                "time_ms": round(execution_time_ms),
-            },
+                "run_id": run_id,
+                "tool_call_id": tool_call.id,
+                "server_name": target_server_name,
+                "original_tool_name": original_tool_name,
+                "full_response": execution_result_content,
+                "execution_time_ms": execution_time_ms
+            }
         )
 
         # Create and return the tool result
@@ -328,14 +360,24 @@ class Orchestrator:
                 suggestions = verification_result.get("suggestions", "")
                 feedback = f"The task is not yet complete. Missing: {missing_steps_str}. {suggestions}"
 
-            # Log verification result (simplified)
-            logging.info(
-                "Task verification result",
+            # Log verification result with enhanced structured logging
+            logger = get_logger()
+            task_name = getattr(conversation, "task_name", f"Task-{os.getpid()}")
+            run_id = getattr(conversation, "run_id", None)
+            log_verification(
+                logger,
+                is_complete=is_complete,
+                feedback=feedback,
+                taskName=task_name,
                 extra={
-                    "event": "verification",
-                    "is_complete": is_complete,
-                    "feedback": feedback,
-                },
+                    "run_id": run_id,
+                    "verification_result": verification_result,
+                    "verification_details": {
+                        "missing_steps": verification_result.get("missing_steps", []),
+                        "suggestions": verification_result.get("suggestions", ""),
+                        "summary": verification_result.get("summary", "")
+                    }
+                }
             )
 
             return is_complete, feedback
@@ -568,7 +610,8 @@ async def initialize_and_run(
     try:
         server_config = load_server_config(config_path)
     except (FileNotFoundError, json.JSONDecodeError) as e:
-        logging.error(f"Failed to load server configuration: {e}")
+        logger = get_logger()
+        logger.error(f"Failed to load server configuration: {e}")
         return
 
     # Create server instances
@@ -578,7 +621,8 @@ async def initialize_and_run(
     ]
 
     if not servers_to_init:
-        logging.error("No mcpServers defined in the configuration file.")
+        logger = get_logger()
+        logger.error("No mcpServers defined in the configuration file.")
         return
 
     # Initialize servers

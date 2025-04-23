@@ -137,6 +137,8 @@ cython_debug/
 # VSCode
 .vscode/
 
+.DS_Store
+
 sample_stuff/*
 
 # Log files directory

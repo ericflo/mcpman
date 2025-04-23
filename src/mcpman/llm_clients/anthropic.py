@@ -1,11 +1,20 @@
 import json
 import logging
 import sys
+import time
 from typing import Dict, List, Any, Optional, Union
 
 import httpx
 
 from .base import BaseLLMClient
+from ..logger import (
+    log_http_request, 
+    log_http_response, 
+    log_llm_request, 
+    log_llm_response,
+    LoggingTimer,
+    get_logger
+)
 
 
 class AnthropicClient(BaseLLMClient):
@@ -181,6 +190,7 @@ class AnthropicClient(BaseLLMClient):
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
         tool_choice: Optional[Dict[str, Any]] = None,
+        run_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Get a response from Claude API and convert to OpenAI-compatible format.
@@ -191,10 +201,12 @@ class AnthropicClient(BaseLLMClient):
             temperature: Sampling temperature for the LLM
             max_tokens: Maximum number of tokens for the response
             tool_choice: Optional specification for tool selection behavior
+            run_id: Optional run identifier for logging
 
         Returns:
             Response message object converted to OpenAI-compatible format
         """
+        logger = get_logger()
         logging.debug(
             f"Sending {len(messages)} messages to Claude. {'Including tools.' if tools else 'No tools.'}"
         )
@@ -229,72 +241,104 @@ class AnthropicClient(BaseLLMClient):
             "x-api-key": self.api_key,
         }
 
+        # Log the LLM request with our enhanced logging
+        extra = {"run_id": run_id} if run_id else {}
+        log_llm_request(
+            logger, 
+            provider="anthropic", 
+            model=self.model_name, 
+            messages=messages, 
+            tools=tools, 
+            temperature=temperature,
+            extra=extra
+        )
+        
         # Make API request and handle response
         try:
             # Use configurable timeout
             with httpx.Client(timeout=self.timeout) as client:
-                # Only log full payload on DEBUG level
-                if logging.getLogger().isEnabledFor(logging.DEBUG):
-                    try:
-                        payload_str = json.dumps(payload, indent=2)
-                        logging.debug(f"Sending Claude Payload:\n{payload_str}")
-                    except Exception as e:
-                        logging.debug(
-                            f"Could not serialize Claude payload for logging: {e}"
-                        )
-                else:
-                    logging.info(
-                        f"Sending request to Claude model {self.model_name}..."
-                    )
-
+                # Log HTTP request with enhanced logging
+                log_http_request(
+                    logger,
+                    url=self.api_url,
+                    method="POST",
+                    headers=headers,
+                    body=payload,
+                    extra={"run_id": run_id} if run_id else {}
+                )
+                
+                # Time the API call
+                start_time = time.time()
+                
                 # Send the request
                 response = client.post(self.api_url, headers=headers, json=payload)
-                logging.debug(
-                    f"Received response from Claude: Status {response.status_code}"
+                
+                # Calculate response time
+                response_time = time.time() - start_time
+                
+                # Log HTTP response with enhanced logging
+                log_http_response(
+                    logger,
+                    url=self.api_url,
+                    status_code=response.status_code,
+                    headers=dict(response.headers),
+                    body=response.text,
+                    response_time=response_time,
+                    extra={"run_id": run_id} if run_id else {}
                 )
 
-                # If there's an error, log the response body
+                # Handle error responses
                 if response.status_code >= 400:
                     try:
                         error_json = response.json()
                         error_message = f"Claude API Error ({response.status_code}): {json.dumps(error_json, indent=2)}"
-                        logging.error(error_message)
-                        print("\n" + "=" * 80, file=sys.stderr)
-                        print(error_message, file=sys.stderr)
-                        print("=" * 80 + "\n", file=sys.stderr)
+                        logger = get_logger()
+                        logger.error(error_message, extra={
+                            "error_status": response.status_code,
+                            "error_details": error_json,
+                            "error_type": "api_error",
+                            "provider": "anthropic",
+                            "run_id": run_id
+                        })
                     except Exception as e:
                         error_text = f"Raw error response: {response.text}"
-                        logging.error(f"Error parsing Claude error response: {e}")
-                        logging.error(error_text)
-                        print("\n" + "=" * 80, file=sys.stderr)
-                        print(
-                            f"Failed to parse Claude error JSON: {e}", file=sys.stderr
-                        )
-                        print(error_text, file=sys.stderr)
-                        print("=" * 80 + "\n", file=sys.stderr)
+                        logger = get_logger()
+                        logger.error(f"Error parsing Claude error response: {e}", extra={
+                            "error_type": "parsing_error",
+                            "error_details": str(e),
+                            "raw_response": response.text,
+                            "status_code": response.status_code,
+                            "provider": "anthropic",
+                            "run_id": run_id
+                        })
 
                 response.raise_for_status()
 
                 # Parse the Claude response
                 data = response.json()
 
-                # Log the full Claude response at debug level
-                if logging.getLogger().isEnabledFor(logging.DEBUG):
-                    try:
-                        logging.debug(
-                            f"Claude raw response: {json.dumps(data, indent=2)}"
-                        )
-                    except Exception as e:
-                        logging.debug(
-                            f"Couldn't serialize Claude response for logging: {e}"
-                        )
-
                 # Normalize Claude response to OpenAI format
                 openai_compatible_response = self._normalize_claude_response(data)
-
-                logging.debug(
-                    f"Converted Claude response: {openai_compatible_response}"
+                
+                # Log LLM response with enhanced logging
+                log_llm_response(
+                    logger,
+                    provider="anthropic",
+                    model=self.model_name,
+                    response=openai_compatible_response,
+                    response_time=response_time,
+                    extra={
+                        "run_id": run_id, 
+                        "has_tool_calls": "tool_calls" in openai_compatible_response,
+                        "has_content": openai_compatible_response.get("content") is not None,
+                        "raw_response": data
+                    } if run_id else {
+                        "has_tool_calls": "tool_calls" in openai_compatible_response,
+                        "has_content": openai_compatible_response.get("content") is not None,
+                        "raw_response": data
+                    }
                 )
+
                 return openai_compatible_response
 
         except httpx.RequestError as e:

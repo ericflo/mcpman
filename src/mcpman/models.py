@@ -5,7 +5,7 @@ This module contains simplified data models that represent the core concepts
 used throughout the application.
 """
 
-from typing import Dict, List, Any, Optional, Union
+from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
 import json
 

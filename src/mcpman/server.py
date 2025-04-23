@@ -2,8 +2,7 @@ import os
 import logging
 import asyncio
 import shutil
-import json
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -42,7 +41,7 @@ class Server:
 
         Args:
             output_only: When True, suppress server logging output
-            
+
         Returns:
             The stdio_client context manager
 
@@ -72,7 +71,8 @@ class Server:
         if output_only:
             # Redirect server output to /dev/null to suppress "Processing request" messages
             import sys
-            null_file = open(os.devnull, 'w') 
+
+            null_file = open(os.devnull, "w")
             return stdio_client(server_params, errlog=null_file)
         else:
             # Normal operation with default error logging

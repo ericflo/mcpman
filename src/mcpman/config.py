@@ -1,7 +1,7 @@
 import os
 import json
 import logging
-from typing import Dict, Any, Optional, Union, Literal
+from typing import Dict, Any, Optional
 
 # Default configuration values
 DEFAULT_CONFIG_PATH = "server_configs/calculator_server_mcp.json"
@@ -116,7 +116,12 @@ LLM_API_URL = os.getenv("LLM_API_URL", OPENAI_API_URL)
 LLM_MODEL_NAME = os.getenv("LLM_MODEL_NAME", "gpt-4.1-nano")
 
 # Tool configuration settings
-STRICT_TOOLS = os.getenv("MCPMAN_STRICT_TOOLS", "true").lower() in ("true", "1", "yes", "y")
+STRICT_TOOLS = os.getenv("MCPMAN_STRICT_TOOLS", "true").lower() in (
+    "true",
+    "1",
+    "yes",
+    "y",
+)
 
 # Default system message for agent behavior
 DEFAULT_SYSTEM_MESSAGE = """

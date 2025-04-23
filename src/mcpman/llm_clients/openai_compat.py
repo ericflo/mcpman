@@ -1,11 +1,20 @@
 import json
 import logging
 import sys
+import time
 from typing import Dict, List, Any, Optional
 
 import httpx
 
 from .base import BaseLLMClient
+from ..logger import (
+    log_http_request, 
+    log_http_response, 
+    log_llm_request, 
+    log_llm_response,
+    LoggingTimer, 
+    get_logger
+)
 
 
 class OpenAICompatClient(BaseLLMClient):
@@ -92,18 +101,25 @@ class OpenAICompatClient(BaseLLMClient):
                     try:
                         error_json = response.json()
                         error_message = f"API Error ({response.status_code}): {json.dumps(error_json, indent=2)}"
-                        logging.error(error_message)
-                        print("\n" + "=" * 80, file=sys.stderr)
-                        print(error_message, file=sys.stderr)
-                        print("=" * 80 + "\n", file=sys.stderr)
+                        logger = get_logger()
+                        logger.error(error_message, extra={
+                            "error_status": response.status_code,
+                            "error_details": error_json,
+                            "error_type": "api_error",
+                            "provider": "openai_compat",
+                            "model": self.model_name
+                        })
                     except Exception as e:
                         error_text = f"Raw error response: {response.text}"
-                        logging.error(f"Error parsing error response: {e}")
-                        logging.error(error_text)
-                        print("\n" + "=" * 80, file=sys.stderr)
-                        print(f"Failed to parse error JSON: {e}", file=sys.stderr)
-                        print(error_text, file=sys.stderr)
-                        print("=" * 80 + "\n", file=sys.stderr)
+                        logger = get_logger()
+                        logger.error(f"Error parsing error response: {e}", extra={
+                            "error_type": "parsing_error",
+                            "error_details": str(e),
+                            "raw_response": response.text,
+                            "status_code": response.status_code,
+                            "provider": "openai_compat",
+                            "model": self.model_name
+                        })
 
                 response.raise_for_status()
 
