@@ -305,6 +305,7 @@ class Orchestrator:
         llm_client: LLMClient,
         verification_prompt: Optional[str] = None,
         temperature: float = 0.4,
+        run_id: Optional[str] = None,
     ) -> Tuple[bool, str]:
         """Verify if the task has been completed successfully."""
         try:
@@ -322,6 +323,7 @@ class Orchestrator:
                     "type": "function",
                     "function": {"name": "verify_completion"},
                 },
+                run_id=run_id,
             )
 
             # Extract the verification result
@@ -399,6 +401,7 @@ class Orchestrator:
         verification_prompt: Optional[str] = None,
         output_only: bool = False,
         strict_tools: Optional[bool] = None,
+        run_id: Optional[str] = None,
     ):
         """Run the agent loop with tools and optional verification."""
         # Initialize conversation
@@ -441,6 +444,7 @@ class Orchestrator:
                                 temperature=temperature,
                                 max_tokens=max_tokens,
                                 tool_choice=None,
+                                run_id=run_id,
                             ),
                         )
                 else:
@@ -453,6 +457,7 @@ class Orchestrator:
                             temperature=temperature,
                             max_tokens=max_tokens,
                             tool_choice=None,
+                            run_id=run_id,
                         ),
                     )
             
@@ -515,11 +520,13 @@ class Orchestrator:
                         if not output_only:
                             with ProgressSpinner("Verifying"):
                                 return await self._verify_completion(
-                                    conversation, llm_client, verification_prompt
+                                    conversation, llm_client, verification_prompt, 
+                                    run_id=run_id
                                 )
                         else:
                             return await self._verify_completion(
-                                conversation, llm_client, verification_prompt
+                                conversation, llm_client, verification_prompt,
+                                run_id=run_id
                             )
                     
                     is_complete, feedback = await verify_with_spinner()
@@ -586,6 +593,7 @@ async def initialize_and_run(
     provider_name: Optional[str] = None,  # Kept for backward compatibility
     output_only: bool = False,
     strict_tools: Optional[bool] = None,
+    run_id: Optional[str] = None,
 ):
     """
     Initialize servers and run the agent loop.
@@ -603,6 +611,7 @@ async def initialize_and_run(
         provider_name: Provider name for backward compatibility
         output_only: Whether to suppress UI output and only show final result
         strict_tools: Whether to use strict mode for tool schemas (None = use default)
+        run_id: Optional run identifier for logging
     """
     from .config import load_server_config
 
@@ -713,6 +722,7 @@ async def initialize_and_run(
                 verification_prompt=verification_prompt,
                 output_only=output_only,
                 strict_tools=strict_tools,
+                run_id=run_id,
             )
 
     except Exception as e:

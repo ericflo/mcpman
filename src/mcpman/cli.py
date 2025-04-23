@@ -323,6 +323,9 @@ async def main() -> None:
     # Initialize servers and run the agent
     try:
         # Pass through the output_only flag and strict_tools to our implementation
+        # Get run ID from the earlier logger setup
+        run_id = f"{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}_{os.getpid()}"
+        
         await initialize_and_run(
             config_path=args.config,
             user_prompt=user_prompt,
@@ -336,6 +339,7 @@ async def main() -> None:
             provider_name=args.impl,
             output_only=args.output_only,
             strict_tools=args.strict_tools,
+            run_id=run_id,
         )
     finally:
         # Log completion of execution with enhanced structured logging

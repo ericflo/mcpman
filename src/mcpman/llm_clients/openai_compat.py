@@ -1,5 +1,4 @@
 import json
-import logging
 import sys
 import time
 from typing import Dict, List, Any, Optional
@@ -7,14 +6,7 @@ from typing import Dict, List, Any, Optional
 import httpx
 
 from .base import BaseLLMClient
-from ..logger import (
-    log_http_request, 
-    log_http_response, 
-    log_llm_request, 
-    log_llm_response,
-    LoggingTimer, 
-    get_logger
-)
+from ..logger import LLMClientLogger
 
 
 class OpenAICompatClient(BaseLLMClient):
@@ -23,6 +15,12 @@ class OpenAICompatClient(BaseLLMClient):
 
     Works with any provider that implements the OpenAI Chat Completions API format.
     """
+    
+    def __init__(self, api_key, api_url, model_name, timeout=180.0):
+        """Initialize the OpenAI-compatible client."""
+        super().__init__(api_key, api_url, model_name, timeout)
+        # Initialize the standardized logger
+        self.logger = LLMClientLogger("openai_compat", model_name)
 
     def get_response(
         self,
@@ -31,6 +29,7 @@ class OpenAICompatClient(BaseLLMClient):
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
         tool_choice: Optional[Dict[str, Any]] = None,
+        run_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Get a response message object from the LLM using OpenAI-compatible API.
@@ -41,12 +40,17 @@ class OpenAICompatClient(BaseLLMClient):
             temperature: Sampling temperature for the LLM
             max_tokens: Maximum number of tokens for the response
             tool_choice: Optional specification for tool selection behavior
+            run_id: Optional run identifier for logging
 
         Returns:
             Response message object from the LLM in standard OpenAI format
         """
-        logging.debug(
-            f"Sending {len(messages)} messages to LLM. {'Including tools.' if tools else 'No tools.'}"
+        # Log the LLM request with standardized logger
+        self.logger.log_request(
+            messages=messages,
+            tools=tools,
+            temperature=temperature,
+            run_id=run_id
         )
 
         # Prepare headers and payload
@@ -76,50 +80,50 @@ class OpenAICompatClient(BaseLLMClient):
         try:
             # Make the API request with configurable timeout
             with httpx.Client(timeout=self.timeout) as client:
-                # Only log full payload on DEBUG level
-                if logging.getLogger().isEnabledFor(logging.DEBUG):
-                    try:
-                        payload_str = json.dumps(payload, indent=2)
-                        logging.debug(f"Sending LLM Payload:\n{payload_str}")
-                    except Exception as e:
-                        logging.debug(
-                            f"Could not serialize LLM payload for logging: {e}"
-                        )
-                else:
-                    logging.info(
-                        f"Sending request to LLM model {self.model_name} at {self.api_url}..."
-                    )
-
-                # Send the request
-                response = client.post(self.api_url, headers=headers, json=payload)
-                logging.debug(
-                    f"Received response from LLM: Status {response.status_code}"
+                # Log HTTP request with standardized logger
+                self.logger.log_http_req(
+                    url=self.api_url,
+                    method="POST",
+                    headers=headers,
+                    body=payload,
+                    run_id=run_id
                 )
 
-                # If there's an error, log the response body
+                # Send the request and time it
+                start_time = time.time()
+                response = client.post(self.api_url, headers=headers, json=payload)
+                response_time = time.time() - start_time
+                
+                # Log HTTP response with standardized logger
+                self.logger.log_http_resp(
+                    url=self.api_url,
+                    status_code=response.status_code,
+                    headers=dict(response.headers),
+                    body=response.text,
+                    response_time=response_time,
+                    run_id=run_id
+                )
+
+                # If there's an error, log it with standardized logger
                 if response.status_code >= 400:
                     try:
                         error_json = response.json()
-                        error_message = f"API Error ({response.status_code}): {json.dumps(error_json, indent=2)}"
-                        logger = get_logger()
-                        logger.error(error_message, extra={
-                            "error_status": response.status_code,
-                            "error_details": error_json,
-                            "error_type": "api_error",
-                            "provider": "openai_compat",
-                            "model": self.model_name
-                        })
+                        self.logger.log_error(
+                            error_type="api_error",
+                            status_code=response.status_code,
+                            error_details=error_json,
+                            run_id=run_id
+                        )
                     except Exception as e:
-                        error_text = f"Raw error response: {response.text}"
-                        logger = get_logger()
-                        logger.error(f"Error parsing error response: {e}", extra={
-                            "error_type": "parsing_error",
-                            "error_details": str(e),
-                            "raw_response": response.text,
-                            "status_code": response.status_code,
-                            "provider": "openai_compat",
-                            "model": self.model_name
-                        })
+                        self.logger.log_error(
+                            error_type="parsing_error",
+                            status_code=response.status_code,
+                            error_details={
+                                "error": str(e),
+                                "raw_response": response.text
+                            },
+                            run_id=run_id
+                        )
 
                 response.raise_for_status()
 
@@ -140,16 +144,35 @@ class OpenAICompatClient(BaseLLMClient):
                     message["role"] = "assistant"
                 if "content" not in message and "tool_calls" not in message:
                     message["content"] = ""
-
-                logging.debug(f"OpenAI response object: {message}")
+                
+                # Log the LLM response with standardized logger
+                self.logger.log_response(
+                    response=message,
+                    response_time=response_time,
+                    run_id=run_id,
+                    extra={
+                        "has_tool_calls": "tool_calls" in message,
+                        "has_content": message.get("content") is not None,
+                        "raw_response": data
+                    }
+                )
+                
                 return message
 
         except httpx.RequestError as e:
-            logging.error(f"Error communicating with LLM at {self.api_url}: {e}")
+            self.logger.log_error(
+                error_type="connection_error", 
+                error_details=str(e),
+                run_id=run_id
+            )
             # Return an error-like message object
             return {"role": "assistant", "content": f"Error: Could not reach LLM: {e}"}
         except (KeyError, IndexError, json.JSONDecodeError) as e:
-            logging.error(f"Error parsing LLM response: {e}")
+            self.logger.log_error(
+                error_type="parsing_error", 
+                error_details=str(e),
+                run_id=run_id
+            )
             return {
                 "role": "assistant",
                 "content": f"Error: Invalid LLM response format: {e}",

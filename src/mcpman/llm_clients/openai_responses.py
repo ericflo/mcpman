@@ -7,10 +7,13 @@ needed for compatibility with mcpman's orchestrator.
 """
 
 import json
-import logging
+import time
 from typing import Dict, List, Any, Optional, Tuple
 
+import httpx
+
 from .base import BaseLLMClient
+from ..logger import LLMClientLogger
 
 
 class OpenAIResponsesClient(BaseLLMClient):
@@ -18,8 +21,14 @@ class OpenAIResponsesClient(BaseLLMClient):
     Client for OpenAI's Responses API.
 
     Handles communication with OpenAI's Responses API, converting between
-    the different formats required. Defaults to o4-mini model.
+    OpenAI-compatible formats and mcpman's internal format.
     """
+    
+    def __init__(self, api_key, api_url, model_name, timeout=180.0):
+        """Initialize the OpenAI Responses client."""
+        super().__init__(api_key, api_url, model_name, timeout)
+        # Initialize the standardized logger
+        self.logger = LLMClientLogger("openai_responses", model_name)
 
     def _convert_messages_to_responses_format(
         self, messages: List[Dict[str, Any]]
@@ -234,6 +243,7 @@ class OpenAIResponsesClient(BaseLLMClient):
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
         tool_choice: Optional[Dict[str, Any]] = None,
+        run_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Get a response from the OpenAI Responses API.
@@ -244,6 +254,7 @@ class OpenAIResponsesClient(BaseLLMClient):
             temperature: Sampling temperature (not used with o4-mini)
             max_tokens: Maximum number of tokens for the response
             tool_choice: Optional specification for tool selection behavior
+            run_id: Optional run identifier for logging
 
         Returns:
             Response message in OpenAI Chat Completions format for compatibility

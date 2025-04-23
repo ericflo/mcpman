@@ -1,5 +1,4 @@
 import json
-import logging
 import sys
 import time
 from typing import Dict, List, Any, Optional, Union
@@ -7,14 +6,7 @@ from typing import Dict, List, Any, Optional, Union
 import httpx
 
 from .base import BaseLLMClient
-from ..logger import (
-    log_http_request, 
-    log_http_response, 
-    log_llm_request, 
-    log_llm_response,
-    LoggingTimer,
-    get_logger
-)
+from ..logger import LLMClientLogger
 
 
 class AnthropicClient(BaseLLMClient):
@@ -23,6 +15,12 @@ class AnthropicClient(BaseLLMClient):
 
     Handles the conversion between OpenAI-compatible format and Anthropic's API.
     """
+    
+    def __init__(self, api_key, api_url, model_name, timeout=180.0):
+        """Initialize the Anthropic client."""
+        super().__init__(api_key, api_url, model_name, timeout)
+        # Initialize the standardized logger
+        self.logger = LLMClientLogger("anthropic", model_name)
 
     def _convert_openai_messages_to_anthropic(
         self, messages: List[Dict[str, Any]]
@@ -241,30 +239,25 @@ class AnthropicClient(BaseLLMClient):
             "x-api-key": self.api_key,
         }
 
-        # Log the LLM request with our enhanced logging
-        extra = {"run_id": run_id} if run_id else {}
-        log_llm_request(
-            logger, 
-            provider="anthropic", 
-            model=self.model_name, 
-            messages=messages, 
-            tools=tools, 
+        # Log the LLM request with our standardized logger
+        self.logger.log_request(
+            messages=messages,
+            tools=tools,
             temperature=temperature,
-            extra=extra
+            run_id=run_id
         )
         
         # Make API request and handle response
         try:
             # Use configurable timeout
             with httpx.Client(timeout=self.timeout) as client:
-                # Log HTTP request with enhanced logging
-                log_http_request(
-                    logger,
+                # Log HTTP request with standardized logger
+                self.logger.log_http_req(
                     url=self.api_url,
                     method="POST",
                     headers=headers,
                     body=payload,
-                    extra={"run_id": run_id} if run_id else {}
+                    run_id=run_id
                 )
                 
                 # Time the API call
@@ -276,41 +269,37 @@ class AnthropicClient(BaseLLMClient):
                 # Calculate response time
                 response_time = time.time() - start_time
                 
-                # Log HTTP response with enhanced logging
-                log_http_response(
-                    logger,
+                # Log HTTP response with standardized logger
+                self.logger.log_http_resp(
                     url=self.api_url,
                     status_code=response.status_code,
                     headers=dict(response.headers),
                     body=response.text,
                     response_time=response_time,
-                    extra={"run_id": run_id} if run_id else {}
+                    run_id=run_id
                 )
 
                 # Handle error responses
                 if response.status_code >= 400:
                     try:
                         error_json = response.json()
-                        error_message = f"Claude API Error ({response.status_code}): {json.dumps(error_json, indent=2)}"
-                        logger = get_logger()
-                        logger.error(error_message, extra={
-                            "error_status": response.status_code,
-                            "error_details": error_json,
-                            "error_type": "api_error",
-                            "provider": "anthropic",
-                            "run_id": run_id
-                        })
+                        self.logger.log_error(
+                            error_type="api_error",
+                            status_code=response.status_code,
+                            error_details=error_json,
+                            run_id=run_id
+                        )
                     except Exception as e:
                         error_text = f"Raw error response: {response.text}"
-                        logger = get_logger()
-                        logger.error(f"Error parsing Claude error response: {e}", extra={
-                            "error_type": "parsing_error",
-                            "error_details": str(e),
-                            "raw_response": response.text,
-                            "status_code": response.status_code,
-                            "provider": "anthropic",
-                            "run_id": run_id
-                        })
+                        self.logger.log_error(
+                            error_type="parsing_error",
+                            status_code=response.status_code,
+                            error_details={
+                                "error": str(e),
+                                "raw_response": response.text
+                            },
+                            run_id=run_id
+                        )
 
                 response.raise_for_status()
 
@@ -320,19 +309,12 @@ class AnthropicClient(BaseLLMClient):
                 # Normalize Claude response to OpenAI format
                 openai_compatible_response = self._normalize_claude_response(data)
                 
-                # Log LLM response with enhanced logging
-                log_llm_response(
-                    logger,
-                    provider="anthropic",
-                    model=self.model_name,
+                # Log LLM response with standardized logger
+                self.logger.log_response(
                     response=openai_compatible_response,
                     response_time=response_time,
+                    run_id=run_id,
                     extra={
-                        "run_id": run_id, 
-                        "has_tool_calls": "tool_calls" in openai_compatible_response,
-                        "has_content": openai_compatible_response.get("content") is not None,
-                        "raw_response": data
-                    } if run_id else {
                         "has_tool_calls": "tool_calls" in openai_compatible_response,
                         "has_content": openai_compatible_response.get("content") is not None,
                         "raw_response": data
@@ -342,13 +324,21 @@ class AnthropicClient(BaseLLMClient):
                 return openai_compatible_response
 
         except httpx.RequestError as e:
-            logging.error(f"Error communicating with Claude API: {e}")
+            self.logger.log_error(
+                error_type="connection_error", 
+                error_details=str(e),
+                run_id=run_id
+            )
             return {
                 "role": "assistant",
                 "content": f"Error: Could not reach Claude API: {e}",
             }
         except (KeyError, IndexError, json.JSONDecodeError) as e:
-            logging.error(f"Error parsing Claude response: {e}")
+            self.logger.log_error(
+                error_type="parsing_error", 
+                error_details=str(e),
+                run_id=run_id
+            )
             return {
                 "role": "assistant",
                 "content": f"Error: Invalid Claude response format: {e}",

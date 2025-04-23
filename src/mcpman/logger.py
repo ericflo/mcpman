@@ -266,6 +266,138 @@ def log_llm_response(logger, provider, model, response, response_time=None, extr
         }
     )
 
+def log_api_error(logger, provider, error_type, status_code=None, error_details=None, run_id=None, extra=None):
+    """Log an API error from an LLM provider in a consistent way."""
+    payload = {
+        "provider": provider,
+        "error_type": error_type,
+    }
+    
+    if status_code:
+        payload["status_code"] = status_code
+        
+    if error_details:
+        payload["error_details"] = error_details
+        
+    if run_id:
+        payload["run_id"] = run_id
+        
+    if extra:
+        payload.update(extra)
+    
+    error_message = f"{provider.capitalize()} API Error"
+    if status_code:
+        error_message += f" ({status_code})"
+    if error_type:
+        error_message += f": {error_type}"
+        
+    logger.error(
+        error_message,
+        extra={
+            "category": CATEGORY_LLM,
+            "event_type": "llm_error",
+            "payload": payload
+        }
+    )
+
+class LLMClientLogger:
+    """
+    Helper class for standardized logging across all LLM client implementations.
+    
+    This provides a consistent interface for logging operations in all LLM clients
+    without duplicating code.
+    """
+    
+    def __init__(self, provider_name, model_name=None):
+        """
+        Initialize the logger with provider and model information.
+        
+        Args:
+            provider_name: Name of the LLM provider (e.g., 'openai', 'anthropic')
+            model_name: Name of the model being used
+        """
+        self.provider = provider_name
+        self.model = model_name
+        self.logger = get_logger()
+        
+    def set_model(self, model_name):
+        """Set or update the model name."""
+        self.model = model_name
+        
+    def log_request(self, messages, tools=None, temperature=None, run_id=None, extra=None):
+        """Log an LLM request in a standardized format."""
+        request_extra = {"run_id": run_id} if run_id else {}
+        if extra:
+            request_extra.update(extra)
+            
+        log_llm_request(
+            self.logger,
+            provider=self.provider,
+            model=self.model,
+            messages=messages,
+            tools=tools,
+            temperature=temperature,
+            extra=request_extra
+        )
+        
+    def log_response(self, response, response_time=None, run_id=None, extra=None):
+        """Log an LLM response in a standardized format."""
+        response_extra = {"run_id": run_id} if run_id else {}
+        if extra:
+            response_extra.update(extra)
+            
+        log_llm_response(
+            self.logger,
+            provider=self.provider,
+            model=self.model,
+            response=response,
+            response_time=response_time,
+            extra=response_extra
+        )
+        
+    def log_http_req(self, url, method, headers, body=None, run_id=None, extra=None):
+        """Log an HTTP request in a standardized format."""
+        request_extra = {"run_id": run_id, "provider": self.provider, "model": self.model} if run_id else {"provider": self.provider, "model": self.model}
+        if extra:
+            request_extra.update(extra)
+            
+        log_http_request(
+            self.logger,
+            url=url,
+            method=method,
+            headers=headers,
+            body=body,
+            extra=request_extra
+        )
+        
+    def log_http_resp(self, url, status_code, headers, body=None, response_time=None, run_id=None, extra=None):
+        """Log an HTTP response in a standardized format."""
+        response_extra = {"run_id": run_id, "provider": self.provider, "model": self.model} if run_id else {"provider": self.provider, "model": self.model}
+        if extra:
+            response_extra.update(extra)
+            
+        log_http_response(
+            self.logger,
+            url=url,
+            status_code=status_code,
+            headers=headers,
+            body=body,
+            response_time=response_time,
+            extra=response_extra
+        )
+        
+    def log_error(self, error_type, status_code=None, error_details=None, run_id=None, extra=None):
+        """Log an API error in a standardized format."""
+        log_api_error(
+            self.logger,
+            provider=self.provider,
+            error_type=error_type,
+            status_code=status_code,
+            error_details=error_details,
+            run_id=run_id,
+            extra=extra
+        )
+
 def log_tool_call(logger, tool_name, parameters, taskName=None, extra=None):
     """Log a tool call."""
     payload = {

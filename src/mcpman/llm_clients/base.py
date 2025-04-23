@@ -36,6 +36,7 @@ class BaseLLMClient(ABC):
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
         tool_choice: Optional[Dict[str, Any]] = None,
+        run_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Get a response from the LLM and convert to standard format.
@@ -46,6 +47,7 @@ class BaseLLMClient(ABC):
             temperature: Sampling temperature for the LLM
             max_tokens: Maximum number of tokens for the response
             tool_choice: Optional specification for tool selection behavior
+            run_id: Optional run identifier for logging
 
         Returns:
             Response message object normalized to the OpenAI format:
