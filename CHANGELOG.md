@@ -4,6 +4,12 @@ All notable changes to MCPMan will be documented in this file.
 
 ## [Unreleased]
 
+## [0.3.3] - 2025-04-23
+
+### Fixed
+- Fixed TypeError in logger when response_time is None
+- Fixed formatting issue with logging HTTP and LLM responses
+
 ## [0.3.2] - 2025-04-23
 
 ### Added

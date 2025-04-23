@@ -236,8 +236,14 @@ def log_http_response(
     if extra:
         payload.update(extra)
 
+    # Format the log message based on whether response_time is available
+    if response_time is not None:
+        log_message = f"HTTP Response: {status_code} from {url} ({response_time:.2f}s)"
+    else:
+        log_message = f"HTTP Response: {status_code} from {url}"
+
     logger.info(
-        f"HTTP Response: {status_code} from {url} ({response_time:.2f}s)",
+        log_message,
         extra={
             "category": CATEGORY_HTTP,
             "event_type": "http_response",
@@ -289,8 +295,14 @@ def log_llm_response(logger, provider, model, response, response_time=None, extr
     if extra:
         payload.update(extra)
 
+    # Format the log message based on whether response_time is available
+    if response_time is not None:
+        log_message = f"LLM Response: {provider}/{model} ({response_time:.2f}s)"
+    else:
+        log_message = f"LLM Response: {provider}/{model}"
+
     logger.info(
-        f"LLM Response: {provider}/{model} ({response_time:.2f}s)",
+        log_message,
         extra={
             "category": CATEGORY_LLM,
             "event_type": "llm_response",
