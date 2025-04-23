@@ -35,6 +35,7 @@ dev = [
 
 [project.scripts]
 mcpman = "mcpman.cli:run"
+mcpreplay = "mcpman.mcpreplay:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
