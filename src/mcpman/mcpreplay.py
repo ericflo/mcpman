@@ -104,8 +104,22 @@ def print_llm_config_box(config: Dict[str, Any]) -> None:
     Args:
         config: Dictionary with configuration data
     """
-    # Use the existing formatting function
-    print_llm_config(config)
+    # Create a custom formatted config box since print_llm_config requires config_path
+    box_width = 80
+    
+    # Print box header
+    print("╔" + "═" * (box_width - 2) + "╗")
+    print("║" + "LLM CONFIGURATION".center(box_width - 2) + "║")
+    print("╠" + "═" * (box_width - 2) + "╣")
+    
+    # Print config items
+    for key, value in config.items():
+        key_display = key.title() + ":"
+        padding = box_width - len(key_display) - len(str(value)) - 4
+        print(f"║{key_display}  {str(value)}{' ' * padding}║")
+    
+    # Print box footer
+    print("╚" + "═" * (box_width - 2) + "╝")
 
 
 def process_conversation_flow(log_entries: List[Dict[str, Any]], show_hidden: bool = False) -> None:
