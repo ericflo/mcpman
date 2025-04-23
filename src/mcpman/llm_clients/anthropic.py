@@ -110,12 +110,13 @@ class AnthropicClient(BaseLLMClient):
 
         return anthropic_tools
 
-    def _normalize_claude_response(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _normalize_claude_response(self, data: Dict[str, Any], run_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Normalize Claude response to OpenAI format.
 
         Args:
             data: Raw Claude API response
+            run_id: Optional run identifier for logging
 
         Returns:
             Response in OpenAI format
@@ -149,8 +150,10 @@ class AnthropicClient(BaseLLMClient):
                     # Skip duplicate tool calls with identical name AND arguments
                     # This prevents exact duplicates while allowing same tool with different args
                     if tool_signature in seen_tool_signatures:
-                        logging.warning(
-                            f"Skipping duplicate tool call to {tool_name} with identical arguments"
+                        self.logger.log_error(
+                            error_type="duplicate_tool_call",
+                            error_details=f"Skipping duplicate tool call to {tool_name} with identical arguments",
+                            run_id=run_id
                         )
                         continue
 
@@ -175,8 +178,11 @@ class AnthropicClient(BaseLLMClient):
         # Add tool calls if found
         if tool_calls:
             normalized_response["tool_calls"] = tool_calls
-            logging.debug(
-                f"Normalized {len(tool_calls)} tool calls from Claude response"
+            self.logger.log_response(
+                response={"tool_calls": tool_calls},
+                response_time=None,
+                run_id=run_id,
+                extra={"message": f"Normalized {len(tool_calls)} tool calls from Claude response"}
             )
 
         return normalized_response
@@ -204,9 +210,12 @@ class AnthropicClient(BaseLLMClient):
         Returns:
             Response message object converted to OpenAI-compatible format
         """
-        logger = get_logger()
-        logging.debug(
-            f"Sending {len(messages)} messages to Claude. {'Including tools.' if tools else 'No tools.'}"
+        self.logger.log_request(
+            messages=messages,
+            tools=tools,
+            temperature=temperature,
+            run_id=run_id,
+            extra={"message": f"Sending {len(messages)} messages to Claude. {'Including tools.' if tools else 'No tools.'}"}
         )
 
         # Convert messages to Anthropic format
@@ -307,7 +316,7 @@ class AnthropicClient(BaseLLMClient):
                 data = response.json()
 
                 # Normalize Claude response to OpenAI format
-                openai_compatible_response = self._normalize_claude_response(data)
+                openai_compatible_response = self._normalize_claude_response(data, run_id=run_id)
                 
                 # Log LLM response with standardized logger
                 self.logger.log_response(

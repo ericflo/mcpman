@@ -14,6 +14,7 @@ import time
 import os
 import sys
 from typing import Dict, List, Any, Optional, Tuple, Union, Literal, cast
+from colorama import Fore, Style
 
 from .server import Server
 from .llm_client import LLMClient
@@ -21,15 +22,30 @@ from .tools import Tool, sanitize_name
 from .config import DEFAULT_VERIFICATION_MESSAGE
 from .models import Conversation, Message, ToolCall, ToolResult
 from .formatting import (
-    format_tool_call, format_tool_response, format_llm_response,
-    format_verification_result, format_processing_step, format_tool_list,
-    ProgressSpinner, normalize_text, get_terminal_width, print_box, 
-    print_short_prompt, BoxStyle
+    format_tool_call,
+    format_tool_response,
+    format_llm_response,
+    format_verification_result,
+    format_processing_step,
+    format_tool_list,
+    ProgressSpinner,
+    normalize_text,
+    get_terminal_width,
+    print_box,
+    print_short_prompt,
+    BoxStyle,
 )
 from .logger import (
-    get_logger, log_tool_call, log_tool_response, LoggingTimer,
-    log_verification, log_execution_start, log_execution_complete,
-    log_llm_response, CATEGORY_TOOL, CATEGORY_VERIFICATION
+    get_logger,
+    log_tool_call,
+    log_tool_response,
+    LoggingTimer,
+    log_verification,
+    log_execution_start,
+    log_execution_complete,
+    log_llm_response,
+    CATEGORY_TOOL,
+    CATEGORY_VERIFICATION,
 )
 
 
@@ -99,13 +115,15 @@ class Orchestrator:
 
         # Log the tool call with enhanced logging
         if not output_only:
-            formatted_tool_call = format_tool_call(prefixed_tool_name, str(tool_call.arguments))
+            formatted_tool_call = format_tool_call(
+                prefixed_tool_name, str(tool_call.arguments)
+            )
             print(formatted_tool_call, flush=True)
-            
+
         # Get task name from the tool call if available
         task_name = getattr(tool_call, "task_name", f"Task-{os.getpid()}")
         run_id = getattr(tool_call, "run_id", None)
-        
+
         # Log with enhanced structured logging
         logger = get_logger()
         log_tool_call(
@@ -118,8 +136,8 @@ class Orchestrator:
                 "tool_call_id": tool_call.id,
                 "server_name": target_server_name,
                 "original_tool_name": original_tool_name,
-                "full_arguments": tool_call.arguments
-            }
+                "full_arguments": tool_call.arguments,
+            },
         )
 
         # Initialize execution tracking
@@ -174,7 +192,9 @@ class Orchestrator:
 
         # Log the tool response with enhanced logging
         if not output_only:
-            formatted_response = format_tool_response(prefixed_tool_name, execution_result_content)
+            formatted_response = format_tool_response(
+                prefixed_tool_name, execution_result_content
+            )
             print(formatted_response, flush=True)
 
         # Get logger and log the response with enhanced structured logging
@@ -193,8 +213,8 @@ class Orchestrator:
                 "server_name": target_server_name,
                 "original_tool_name": original_tool_name,
                 "full_response": execution_result_content,
-                "execution_time_ms": execution_time_ms
-            }
+                "execution_time_ms": execution_time_ms,
+            },
         )
 
         # Create and return the tool result
@@ -207,7 +227,10 @@ class Orchestrator:
         )
 
     async def _execute_tools(
-        self, tool_calls: List[ToolCall], servers: List[Server], output_only: bool = False
+        self,
+        tool_calls: List[ToolCall],
+        servers: List[Server],
+        output_only: bool = False,
     ) -> List[ToolResult]:
         """Execute multiple tool calls and return the results."""
         results = []
@@ -377,9 +400,9 @@ class Orchestrator:
                     "verification_details": {
                         "missing_steps": verification_result.get("missing_steps", []),
                         "suggestions": verification_result.get("suggestions", ""),
-                        "summary": verification_result.get("summary", "")
-                    }
-                }
+                        "summary": verification_result.get("summary", ""),
+                    },
+                },
             )
 
             return is_complete, feedback
@@ -417,8 +440,12 @@ class Orchestrator:
                 logging.warning(f"Failed to list tools for server {server.name}: {e}")
 
         # Convert tools to OpenAI schema with strict mode setting
-        openai_tools = [tool.to_openai_schema(strict=strict_tools) for tool in all_tools]
-        logging.debug(f"Prepared {len(openai_tools)} tools for the API with strict={strict_tools} (None means use default)")
+        openai_tools = [
+            tool.to_openai_schema(strict=strict_tools) for tool in all_tools
+        ]
+        logging.debug(
+            f"Prepared {len(openai_tools)} tools for the API with strict={strict_tools} (None means use default)"
+        )
 
         # Get the event loop
         loop = asyncio.get_running_loop()
@@ -432,7 +459,7 @@ class Orchestrator:
 
             # Call the LLM with a progress spinner
             spinner_message = "Thinking" if not output_only else ""
-            
+
             async def call_llm_with_spinner():
                 if not output_only:
                     with ProgressSpinner(spinner_message):
@@ -460,9 +487,9 @@ class Orchestrator:
                             run_id=run_id,
                         ),
                     )
-            
+
             assistant_response_dict = await call_llm_with_spinner()
-            
+
             # Calculate elapsed time
             elapsed_time = (datetime.datetime.now() - start_time).total_seconds()
 
@@ -513,22 +540,29 @@ class Orchestrator:
                         # Format the potential answer with pretty formatting
                         formatted_content = format_llm_response(content, is_final=False)
                         print(formatted_content, flush=True)
-                        print(format_processing_step("Verifying task completion"), flush=True)
+                        print(
+                            format_processing_step("Verifying task completion"),
+                            flush=True,
+                        )
 
                     # Run verification with spinner
                     async def verify_with_spinner():
                         if not output_only:
                             with ProgressSpinner("Verifying"):
                                 return await self._verify_completion(
-                                    conversation, llm_client, verification_prompt, 
-                                    run_id=run_id
+                                    conversation,
+                                    llm_client,
+                                    verification_prompt,
+                                    run_id=run_id,
                                 )
                         else:
                             return await self._verify_completion(
-                                conversation, llm_client, verification_prompt,
-                                run_id=run_id
+                                conversation,
+                                llm_client,
+                                verification_prompt,
+                                run_id=run_id,
                             )
-                    
+
                     is_complete, feedback = await verify_with_spinner()
 
                     if is_complete:
@@ -538,14 +572,20 @@ class Orchestrator:
                             print(content.strip())
                         else:
                             # Show the final answer with nice formatting
-                            formatted_final = format_llm_response(content, is_final=True)
+                            formatted_final = format_llm_response(
+                                content, is_final=True
+                            )
                             print(formatted_final, flush=True)
-                            print(format_verification_result(True, feedback), flush=True)
+                            print(
+                                format_verification_result(True, feedback), flush=True
+                            )
                         break
                     else:
                         # Task is not complete, continue with feedback
                         if not output_only:
-                            print(format_verification_result(False, feedback), flush=True)
+                            print(
+                                format_verification_result(False, feedback), flush=True
+                            )
                         conversation.add_user_message(
                             f"Your response is incomplete. {feedback} Please continue working on the task."
                         )
@@ -558,7 +598,9 @@ class Orchestrator:
                             print(content.strip())
                         else:
                             # Show final answer with pretty formatting
-                            formatted_final = format_llm_response(content, is_final=True)
+                            formatted_final = format_llm_response(
+                                content, is_final=True
+                            )
                             print(formatted_final, flush=True)
                     else:
                         if not output_only:
@@ -574,8 +616,8 @@ class Orchestrator:
             # Max turns reached
             if not output_only:
                 print(
-                    f"\n{Fore.RED}⚠ WARNING:{Style.RESET_ALL} Maximum turns ({max_turns}) reached without a final answer.", 
-                    flush=True
+                    f"\n{Fore.RED}⚠ WARNING:{Style.RESET_ALL} Maximum turns ({max_turns}) reached without a final answer.",
+                    flush=True,
                 )
             logging.warning(f"Maximum turns ({max_turns}) reached without completion")
 
@@ -668,14 +710,21 @@ async def initialize_and_run(
                         logging.debug(
                             f"Server '{server.name}' initialized with {len(server_tools)} tools"
                         )
-                        if logging.getLogger().isEnabledFor(logging.DEBUG) and not output_only:
+                        if (
+                            logging.getLogger().isEnabledFor(logging.DEBUG)
+                            and not output_only
+                        ):
                             if server_tools:
                                 # Use the centralized formatting function to display the tools box
-                                tool_box_lines = format_tool_list(server.name, server_tools, indent=2)
+                                tool_box_lines = format_tool_list(
+                                    server.name, server_tools, indent=2
+                                )
                                 for line in tool_box_lines:
                                     print(line)
                             else:
-                                print(f"  Server '{server.name}' initialized with no tools")
+                                print(
+                                    f"  Server '{server.name}' initialized with no tools"
+                                )
                     except Exception as list_tools_e:
                         logging.warning(
                             f"Could not list tools for {server.name} after init: {list_tools_e}"
@@ -699,7 +748,7 @@ async def initialize_and_run(
 
             # Run the agent
             logging.info(f"Running prompt: {user_prompt}")
-            
+
             # Only print if not in output-only mode
             if not output_only:
                 # Only print the full prompt in debug mode

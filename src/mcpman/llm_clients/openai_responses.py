@@ -23,7 +23,7 @@ class OpenAIResponsesClient(BaseLLMClient):
     Handles communication with OpenAI's Responses API, converting between
     OpenAI-compatible formats and mcpman's internal format.
     """
-    
+
     def __init__(self, api_key, api_url, model_name, timeout=180.0):
         """Initialize the OpenAI Responses client."""
         super().__init__(api_key, api_url, model_name, timeout)
@@ -31,13 +31,14 @@ class OpenAIResponsesClient(BaseLLMClient):
         self.logger = LLMClientLogger("openai_responses", model_name)
 
     def _convert_messages_to_responses_format(
-        self, messages: List[Dict[str, Any]]
+        self, messages: List[Dict[str, Any]], run_id: Optional[str] = None
     ) -> Tuple[Optional[str], List[Dict[str, Any]]]:
         """
         Convert messages from Chat Completions format to Responses API format.
 
         Args:
             messages: List of message objects in OpenAI Chat Completions format
+            run_id: Optional run identifier for logging
 
         Returns:
             Tuple of (system_content, message_list)
@@ -86,8 +87,10 @@ class OpenAIResponsesClient(BaseLLMClient):
 
                 # Skip invalid tool responses
                 if not tool_call_id or tool_call_id not in tool_calls_by_id:
-                    logging.debug(
-                        f"Skipping tool response with missing/invalid call_id: {tool_call_id}"
+                    self.logger.log_error(
+                        error_type="invalid_tool_response",
+                        error_details=f"Skipping tool response with missing/invalid call_id: {tool_call_id}",
+                        run_id=run_id,
                     )
                     continue
 
@@ -146,12 +149,15 @@ class OpenAIResponsesClient(BaseLLMClient):
 
         return responses_tools
 
-    def _normalize_responses_response(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _normalize_responses_response(
+        self, data: Dict[str, Any], run_id: Optional[str] = None
+    ) -> Dict[str, Any]:
         """
         Normalize Responses API response to Chat Completions format.
 
         Args:
             data: Response from the Responses API
+            run_id: Optional run identifier for logging
 
         Returns:
             Response in OpenAI Chat Completions format for the orchestrator
@@ -223,8 +229,10 @@ class OpenAIResponsesClient(BaseLLMClient):
                 )
 
         except Exception as e:
-            logging.error(
-                f"Error normalizing Responses API response: {e}", exc_info=True
+            self.logger.log_error(
+                error_type="normalization_error",
+                error_details=f"Error normalizing Responses API response: {e}",
+                run_id=run_id,
             )
             normalized_response["content"] = (
                 f"Error processing model response: {str(e)}"
@@ -259,15 +267,25 @@ class OpenAIResponsesClient(BaseLLMClient):
         Returns:
             Response message in OpenAI Chat Completions format for compatibility
         """
-        logging.debug(f"Sending request to Responses API with model {self.model_name}")
+        self.logger.log_request(
+            messages=messages,
+            tools=tools,
+            temperature=temperature,
+            run_id=run_id,
+            extra={
+                "message": f"Sending request to Responses API with model {self.model_name}"
+            },
+        )
 
         try:
             # Import the OpenAI client
             try:
                 from openai import OpenAI
             except ImportError:
-                logging.error(
-                    "OpenAI Python package is not installed. Please install it with: pip install openai>=1.0.0"
+                self.logger.log_error(
+                    error_type="package_missing",
+                    error_details="OpenAI Python package is not installed",
+                    run_id=run_id,
                 )
                 return {
                     "role": "assistant",
@@ -279,7 +297,7 @@ class OpenAIResponsesClient(BaseLLMClient):
 
             # Convert messages to Responses API format
             instructions, input_messages = self._convert_messages_to_responses_format(
-                messages
+                messages, run_id=run_id
             )
 
             # Prepare API parameters
@@ -316,7 +334,9 @@ class OpenAIResponsesClient(BaseLLMClient):
 
             # Normalize and return the response
             try:
-                normalized_response = self._normalize_responses_response(response)
+                normalized_response = self._normalize_responses_response(
+                    response, run_id=run_id
+                )
 
                 # Ensure required fields are present
                 if "role" not in normalized_response:
@@ -328,14 +348,22 @@ class OpenAIResponsesClient(BaseLLMClient):
                 return normalized_response
 
             except Exception as e:
-                logging.error(f"Failed to normalize response: {e}", exc_info=True)
+                self.logger.log_error(
+                    error_type="normalization_error",
+                    error_details=f"Failed to normalize response: {e}",
+                    run_id=run_id,
+                )
                 return {
                     "role": "assistant",
                     "content": f"Error processing model response: {str(e)}",
                 }
 
         except Exception as e:
-            logging.error(f"Error communicating with OpenAI Responses API: {e}")
+            self.logger.log_error(
+                error_type="api_communication_error",
+                error_details=f"Error communicating with OpenAI Responses API: {e}",
+                run_id=run_id,
+            )
             return {
                 "role": "assistant",
                 "content": f"Error: Could not complete request to OpenAI Responses API: {str(e)}",
