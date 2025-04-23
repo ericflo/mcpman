@@ -4,6 +4,12 @@ All notable changes to MCPMan will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Added enhanced structured logging system with run ID tracking
+- Added mcpreplay tool for visualizing previous conversations from log files
+- Added replay mode to CLI with `--replay` and `--replay-file` parameters
+- Added standardized logging across all LLM clients
+
 ## [0.2.3] - 2025-04-22
 
 ### Added

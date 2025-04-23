@@ -81,7 +81,7 @@ def parse_args() -> argparse.Namespace:
 
     # Add replay-specific arguments to both replay parser and main parser
     parser.add_argument(
-        "--log-file",
+        "--replay-file",
         help="Path to the log file to replay (defaults to latest log)",
     )
     parser.add_argument(
@@ -90,7 +90,7 @@ def parse_args() -> argparse.Namespace:
         help="Show events that wouldn't normally be visible in replay mode",
     )
     replay_parser.add_argument(
-        "--log-file",
+        "--replay-file",
         help="Path to the log file to replay (defaults to latest log)",
     )
     replay_parser.add_argument(
@@ -365,12 +365,12 @@ async def main() -> None:
     # 2. The --replay flag: args.replay == True
     if getattr(args, "mode", None) == "replay" or getattr(args, "replay", False):
         # Run in replay mode - get log file path from args
-        log_file = getattr(args, "log_file", None)
+        replay_file = getattr(args, "replay_file", None)
         log_dir = getattr(args, "log_dir", "logs")
         show_hidden = getattr(args, "show_hidden", False)
 
         # Run replay mode without async/await
-        replay_mode(log_file, log_dir, show_hidden)
+        replay_mode(replay_file, log_dir, show_hidden)
         return
 
     # Regular run mode - validate required parameters
@@ -765,29 +765,29 @@ def process_log_file(log_file_path: str, show_hidden: bool = False) -> None:
 
 
 def replay_mode(
-    log_file: Optional[str] = None, log_dir: str = "logs", show_hidden: bool = False
+    replay_file: Optional[str] = None, log_dir: str = "logs", show_hidden: bool = False
 ) -> None:
     """
     Run the application in replay mode.
 
     Args:
-        log_file: Path to the log file to replay
+        replay_file: Path to the log file to replay
         log_dir: Directory containing log files
         show_hidden: Whether to show events that wouldn't normally be visible
     """
-    # If no log file specified, find the latest one
-    if not log_file:
-        log_file = find_latest_log_file(log_dir)
-        if not log_file:
+    # If no replay file specified, find the latest one
+    if not replay_file:
+        replay_file = find_latest_log_file(log_dir)
+        if not replay_file:
             print(
-                "Error: No log file specified and no log files found in the logs directory."
+                "Error: No replay file specified and no log files found in the logs directory."
             )
             sys.exit(1)
 
-        print(f"Using latest log file: {log_file}")
+        print(f"Using latest log file: {replay_file}")
 
     # Process the log file
-    process_log_file(log_file, show_hidden)
+    process_log_file(replay_file, show_hidden)
 
 
 def run() -> None:

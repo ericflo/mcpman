@@ -30,7 +30,8 @@ uv run github.com/ericflo/mcpman -c server_configs/calculator_server_mcp.json -i
 
 - **One-command setup**: Manage and launch MCP servers directly
 - **Tool orchestration**: Automatically connect LLMs to any MCP-compatible tool
-- **Detailed logging**: JSON structured logs for every interaction
+- **Detailed logging**: Structured JSON logs for every interaction with run ID tracking
+- **Log replay**: Visualize previous conversations with the mcpreplay tool
 - **Multiple LLM support**: Works with OpenAI, Google Gemini, Ollama, LMStudio and more
 - **Flexible configuration**: Supports stdio and SSE server communication
 
@@ -50,7 +51,11 @@ uvx pip install git+https://github.com/ericflo/mcpman.git
 ## Basic Usage
 
 ```bash
+# Run mode (default)
 mcpman -c <CONFIG_FILE> -i <IMPLEMENTATION> -m <MODEL> -p "<PROMPT>"
+
+# Replay mode
+mcpman --replay [--replay-file <LOG_FILE>]
 ```
 
 Examples:
@@ -68,6 +73,12 @@ mcpman -c ./server_configs/multi_server_mcp.json \
        -m gpt-4.1-mini \
        -s "You are a helpful assistant. Use tools effectively." \
        -p "Calculate 753 * 219 and tell me what time it is in Sydney, Australia"
+
+# Replay the most recent conversation
+mcpman --replay
+
+# Replay a specific log file
+mcpman --replay --replay-file ./logs/mcpman_20250422_142536.jsonl
 ```
 
 ## Server Configuration
@@ -128,6 +139,8 @@ MCPMan uses JSON configuration files to define the MCP servers. Examples:
 | `--no-verify` | Disable task verification |
 | `--strict-tools` | Enable strict mode for tool schemas (default) |
 | `--no-strict-tools` | Disable strict mode for tool schemas |
+| `--replay` | Run in replay mode to visualize a previous conversation log |
+| `--replay-file <PATH>` | Path to the log file to replay (defaults to latest log) |
 
 API keys are set via environment variables: `OPENAI_API_KEY`, `GEMINI_API_KEY`, etc.  
 Tool schema behavior can be configured with the `MCPMAN_STRICT_TOOLS` environment variable.
