@@ -7,10 +7,7 @@ needed for compatibility with mcpman's orchestrator.
 """
 
 import json
-import time
 from typing import Dict, List, Any, Optional, Tuple
-
-import httpx
 
 from .base import BaseLLMClient
 from ..logger import LLMClientLogger

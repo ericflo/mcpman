@@ -1,5 +1,4 @@
 import json
-import sys
 import time
 from typing import Dict, List, Any, Optional
 
@@ -15,7 +14,7 @@ class OpenAICompatClient(BaseLLMClient):
 
     Works with any provider that implements the OpenAI Chat Completions API format.
     """
-    
+
     def __init__(self, api_key, api_url, model_name, timeout=180.0):
         """Initialize the OpenAI-compatible client."""
         super().__init__(api_key, api_url, model_name, timeout)
@@ -47,10 +46,7 @@ class OpenAICompatClient(BaseLLMClient):
         """
         # Log the LLM request with standardized logger
         self.logger.log_request(
-            messages=messages,
-            tools=tools,
-            temperature=temperature,
-            run_id=run_id
+            messages=messages, tools=tools, temperature=temperature, run_id=run_id
         )
 
         # Prepare headers and payload
@@ -86,14 +82,14 @@ class OpenAICompatClient(BaseLLMClient):
                     method="POST",
                     headers=headers,
                     body=payload,
-                    run_id=run_id
+                    run_id=run_id,
                 )
 
                 # Send the request and time it
                 start_time = time.time()
                 response = client.post(self.api_url, headers=headers, json=payload)
                 response_time = time.time() - start_time
-                
+
                 # Log HTTP response with standardized logger
                 self.logger.log_http_resp(
                     url=self.api_url,
@@ -101,7 +97,7 @@ class OpenAICompatClient(BaseLLMClient):
                     headers=dict(response.headers),
                     body=response.text,
                     response_time=response_time,
-                    run_id=run_id
+                    run_id=run_id,
                 )
 
                 # If there's an error, log it with standardized logger
@@ -112,7 +108,7 @@ class OpenAICompatClient(BaseLLMClient):
                             error_type="api_error",
                             status_code=response.status_code,
                             error_details=error_json,
-                            run_id=run_id
+                            run_id=run_id,
                         )
                     except Exception as e:
                         self.logger.log_error(
@@ -120,9 +116,9 @@ class OpenAICompatClient(BaseLLMClient):
                             status_code=response.status_code,
                             error_details={
                                 "error": str(e),
-                                "raw_response": response.text
+                                "raw_response": response.text,
                             },
-                            run_id=run_id
+                            run_id=run_id,
                         )
 
                 response.raise_for_status()
@@ -144,7 +140,7 @@ class OpenAICompatClient(BaseLLMClient):
                     message["role"] = "assistant"
                 if "content" not in message and "tool_calls" not in message:
                     message["content"] = ""
-                
+
                 # Log the LLM response with standardized logger
                 self.logger.log_response(
                     response=message,
@@ -153,25 +149,21 @@ class OpenAICompatClient(BaseLLMClient):
                     extra={
                         "has_tool_calls": "tool_calls" in message,
                         "has_content": message.get("content") is not None,
-                        "raw_response": data
-                    }
+                        "raw_response": data,
+                    },
                 )
-                
+
                 return message
 
         except httpx.RequestError as e:
             self.logger.log_error(
-                error_type="connection_error", 
-                error_details=str(e),
-                run_id=run_id
+                error_type="connection_error", error_details=str(e), run_id=run_id
             )
             # Return an error-like message object
             return {"role": "assistant", "content": f"Error: Could not reach LLM: {e}"}
         except (KeyError, IndexError, json.JSONDecodeError) as e:
             self.logger.log_error(
-                error_type="parsing_error", 
-                error_details=str(e),
-                run_id=run_id
+                error_type="parsing_error", error_details=str(e), run_id=run_id
             )
             return {
                 "role": "assistant",

@@ -12,13 +12,12 @@ import contextlib
 import datetime
 import time
 import os
-import sys
-from typing import Dict, List, Any, Optional, Tuple, Union, Literal, cast
+from typing import Dict, List, Any, Optional, Tuple
 from colorama import Fore, Style
 
 from .server import Server
 from .llm_client import LLMClient
-from .tools import Tool, sanitize_name
+from .tools import sanitize_name
 from .config import DEFAULT_VERIFICATION_MESSAGE
 from .models import Conversation, Message, ToolCall, ToolResult
 from .formatting import (
@@ -29,8 +28,6 @@ from .formatting import (
     format_processing_step,
     format_tool_list,
     ProgressSpinner,
-    normalize_text,
-    get_terminal_width,
     print_box,
     print_short_prompt,
     BoxStyle,
@@ -39,13 +36,7 @@ from .logger import (
     get_logger,
     log_tool_call,
     log_tool_response,
-    LoggingTimer,
     log_verification,
-    log_execution_start,
-    log_execution_complete,
-    log_llm_response,
-    CATEGORY_TOOL,
-    CATEGORY_VERIFICATION,
 )
 
 
