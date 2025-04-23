@@ -374,12 +374,17 @@ async def main() -> None:
         return
 
     # Regular run mode - validate required parameters
+    missing_args = []
     if not args.config:
-        print("Error: --config/-c argument is required when not in replay mode.")
-        sys.exit(1)
-
+        missing_args.append("--config/-c")
+    
     if not args.prompt:
-        print("Error: --prompt/-p argument is required when not in replay mode.")
+        missing_args.append("--prompt/-p")
+        
+    if missing_args:
+        print(f"Error: {', '.join(missing_args)} argument(s) required when not in replay mode.")
+        logger = logging.getLogger(__name__)
+        logger.error(f"Missing required arguments: {missing_args}")
         sys.exit(1)
 
     # Setup logging
@@ -438,10 +443,17 @@ async def main() -> None:
         logger.error(
             "Could not determine LLM API URL. Please configure using -i/--impl, --base-url, or environment variables."
         )
+        # Provide more helpful error message for console
+        print(f"Error: Could not determine LLM API URL for provider {args.impl or 'custom'}.")
+        print("       Please configure using -i/--impl, --base-url, or environment variables.")
+        print("       See documentation for required environment variables for each provider.")
         return
 
     if not provider_config["model"]:
         logger.error("No model name specified or found for provider.")
+        # Provide helpful error message for console
+        print(f"Error: No model name specified or found for provider {args.impl or 'custom'}.")
+        print("       Specify with -m/--model or set appropriate environment variable.")
         return
 
     # Create LLM client

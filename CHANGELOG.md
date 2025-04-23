@@ -4,6 +4,15 @@ All notable changes to MCPMan will be documented in this file.
 
 ## [Unreleased]
 
+## [0.3.2] - 2025-04-23
+
+### Added
+- Improved CLI error messages for missing required arguments
+- Enhanced error output to be more helpful to users
+
+### Fixed
+- Fixed issue with missing arguments validation in CLI
+
 ## [0.3.1] - 2025-04-23
 
 ### Added
