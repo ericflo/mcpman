@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mcpman"
-version = "0.2.4"
+version = "0.3.0"
 description = "Model Context Protocol (MCP) Manager - a tool for managing MCP servers"
 authors = [
     {name = "Eric Florenzano", email = "floguy@gmail.com"},
