@@ -4,6 +4,19 @@ All notable changes to MCPMan will be documented in this file.
 
 ## [Unreleased]
 
+## [0.3.1] - 2025-04-23
+
+### Added
+- Significantly improved error handling throughout the entire codebase
+- Added fallback server capability for increased resilience
+- Added robust message parsing to handle malformed data
+
+### Fixed
+- Fixed issue where errors in tool calls would terminate the entire process
+- Fixed error handling in LLM client communications
+- Fixed error propagation to allow LLMs to self-heal from errors
+- Improved error messages for users
+
 ## [0.3.0] - 2025-04-22
 
 ### Added

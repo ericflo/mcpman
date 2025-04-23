@@ -342,14 +342,36 @@ class Orchestrator:
 
             # Extract the verification result
             verification_result = None
-            if (
-                "tool_calls" in verification_response
-                and verification_response["tool_calls"]
-            ):
-                tool_call = verification_response["tool_calls"][0]
-                if tool_call["function"]["name"] != "verify_completion":
-                    return False, "Verification failed: Wrong function called."
-                verification_result = json.loads(tool_call["function"]["arguments"])
+            try:
+                if (
+                    "tool_calls" in verification_response
+                    and verification_response["tool_calls"]
+                ):
+                    tool_call = verification_response["tool_calls"][0]
+                    if tool_call["function"]["name"] != "verify_completion":
+                        return False, "Verification failed: Wrong function called."
+                    try:
+                        verification_result = json.loads(
+                            tool_call["function"]["arguments"]
+                        )
+                    except json.JSONDecodeError as json_e:
+                        logging.error(f"Error parsing verification arguments: {json_e}")
+                        # Try to recover with a basic structure
+                        verification_result = {
+                            "is_complete": False,
+                            "thoughts": f"Error parsing verification result: {json_e}",
+                            "summary": "Verification could not be completed due to parsing error.",
+                        }
+            except Exception as e:
+                logging.error(
+                    f"Error extracting verification result: {e}", exc_info=True
+                )
+                # Create a default failure result
+                verification_result = {
+                    "is_complete": False,
+                    "thoughts": f"Error during verification: {e}",
+                    "summary": "Verification process encountered an unexpected error.",
+                }
 
             # If no result found
             if not verification_result:
@@ -452,8 +474,22 @@ class Orchestrator:
             spinner_message = "Thinking" if not output_only else ""
 
             async def call_llm_with_spinner():
-                if not output_only:
-                    with ProgressSpinner(spinner_message):
+                try:
+                    if not output_only:
+                        with ProgressSpinner(spinner_message):
+                            return await loop.run_in_executor(
+                                None,
+                                lambda: llm_client.get_response(
+                                    conversation.to_dict_list(),
+                                    openai_tools,
+                                    temperature=temperature,
+                                    max_tokens=max_tokens,
+                                    tool_choice=None,
+                                    run_id=run_id,
+                                ),
+                            )
+                    else:
+                        # No spinner in output-only mode
                         return await loop.run_in_executor(
                             None,
                             lambda: llm_client.get_response(
@@ -465,21 +501,26 @@ class Orchestrator:
                                 run_id=run_id,
                             ),
                         )
-                else:
-                    # No spinner in output-only mode
-                    return await loop.run_in_executor(
-                        None,
-                        lambda: llm_client.get_response(
-                            conversation.to_dict_list(),
-                            openai_tools,
-                            temperature=temperature,
-                            max_tokens=max_tokens,
-                            tool_choice=None,
-                            run_id=run_id,
-                        ),
-                    )
+                except Exception as e:
+                    logging.error(f"LLM response error: {e}", exc_info=True)
+                    # Return an error message that looks like a valid response
+                    # This allows the flow to continue and gives the LLM a chance to recover
+                    return {
+                        "role": "assistant",
+                        "content": f"I encountered an error while processing your request: {e}. Please try again or rephrase your query.",
+                    }
 
-            assistant_response_dict = await call_llm_with_spinner()
+            try:
+                assistant_response_dict = await call_llm_with_spinner()
+            except Exception as e:
+                logging.error(
+                    f"Unexpected error in LLM response handling: {e}", exc_info=True
+                )
+                # Create a fallback response to prevent process termination
+                assistant_response_dict = {
+                    "role": "assistant",
+                    "content": f"An unexpected error occurred: {e}. Let me try a different approach.",
+                }
 
             # Calculate elapsed time
             elapsed_time = (datetime.datetime.now() - start_time).total_seconds()
@@ -725,12 +766,51 @@ async def initialize_and_run(
                     logging.error(
                         f"Failed to initialize server {server.name}: {e}", exc_info=True
                     )
-                    return
+                    # Continue with other servers instead of exiting entirely
+                    # This allows partial functionality if some servers fail
 
-            # Exit if initialization failed
+            # Continue even if some servers failed, as long as at least one initialized
             if not initialized_servers:
-                logging.error("No servers were initialized successfully. Exiting.")
-                return
+                logging.error("No servers were initialized successfully.")
+                # Create a dummy server with basic echo functionality
+                logging.warning("Creating a fallback server to maintain operation...")
+                try:
+                    # Create an echo server that just returns arguments as a string
+                    class FallbackServer:
+                        def __init__(self):
+                            self.name = "fallback"
+                            self.session = None
+
+                        async def list_tools(self):
+                            from .tools import Tool
+
+                            # Create a simple echo tool
+                            return [
+                                Tool(
+                                    name="fallback_echo",
+                                    description="Echo back the input (fallback tool when regular servers fail)",
+                                    input_schema={
+                                        "type": "object",
+                                        "properties": {"message": {"type": "string"}},
+                                    },
+                                    original_name="echo",
+                                )
+                            ]
+
+                        async def execute_tool(self, tool_name, arguments):
+                            if tool_name == "echo":
+                                return f"FALLBACK SERVER: {json.dumps(arguments)}"
+                            return f"Unknown tool: {tool_name}"
+
+                    fallback = FallbackServer()
+                    initialized_servers.append(fallback)
+                    logging.info("Fallback server created successfully.")
+                except Exception as fallback_e:
+                    logging.error(
+                        f"Failed to create fallback server: {fallback_e}", exc_info=True
+                    )
+                    # Now we really have no choice but to return
+                    return
 
             # Create orchestrator
             orchestrator = Orchestrator(
@@ -750,20 +830,30 @@ async def initialize_and_run(
                     # Use the centralized formatting for short prompt display
                     print_short_prompt(user_prompt)
 
-            await orchestrator.run_agent(
-                user_prompt,
-                initialized_servers,
-                llm_client,
-                system_message,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                max_turns=max_turns,
-                verify_completion=verify_completion,
-                verification_prompt=verification_prompt,
-                output_only=output_only,
-                strict_tools=strict_tools,
-                run_id=run_id,
-            )
+            try:
+                await orchestrator.run_agent(
+                    user_prompt,
+                    initialized_servers,
+                    llm_client,
+                    system_message,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    max_turns=max_turns,
+                    verify_completion=verify_completion,
+                    verification_prompt=verification_prompt,
+                    output_only=output_only,
+                    strict_tools=strict_tools,
+                    run_id=run_id,
+                )
+            except Exception as e:
+                logger = get_logger()
+                logger.error(f"Error during agent execution: {e}", exc_info=True)
+                # Print error message for the user if not in output_only mode
+                if not output_only:
+                    print(
+                        f"\n{Fore.RED}An error occurred during execution: {e}{Style.RESET_ALL}"
+                    )
+                    print("The error has been logged. Check logs for details.")
 
     except Exception as e:
         logging.error(f"An unexpected error occurred: {e}", exc_info=True)

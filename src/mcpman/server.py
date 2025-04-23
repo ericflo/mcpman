@@ -159,18 +159,32 @@ class Server:
             arguments: Tool arguments
 
         Returns:
-            Tool execution result
+            Tool execution result or error object with isError=True
 
-        Raises:
-            RuntimeError: If server session is not initialized
-            Exception: From self.session.call_tool if execution fails
+        Notes:
+            This method now catches all exceptions and returns them as error objects
+            rather than raising exceptions, to improve resilience and allow the
+            LLM to handle errors gracefully.
         """
         if not self.session:
-            raise RuntimeError(f"Server {self.name} session not initialized")
+            logging.error(f"Server {self.name} session not initialized")
+            # Return an error object instead of raising an exception
+            return type('ErrorObject', (), {
+                'isError': True, 
+                'content': f"Error: Server {self.name} session not initialized"
+            })()
 
-        logging.debug(f"Executing {tool_name} via MCP session...")
-        result = await self.session.call_tool(tool_name, arguments)
-        return result
+        try:
+            logging.debug(f"Executing {tool_name} via MCP session...")
+            result = await self.session.call_tool(tool_name, arguments)
+            return result
+        except Exception as e:
+            logging.error(f"Exception executing tool {tool_name} on server {self.name}: {e}", exc_info=True)
+            # Return error as an object with isError flag instead of raising
+            return type('ErrorObject', (), {
+                'isError': True, 
+                'content': f"Error executing tool {tool_name}: {str(e)}"
+            })()
 
 
 async def setup_servers(server_config: Dict[str, Any]) -> List[Server]:
