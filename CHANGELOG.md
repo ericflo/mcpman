@@ -4,6 +4,12 @@ All notable changes to MCPMan will be documented in this file.
 
 ## [Unreleased]
 
+## [0.3.4] - 2025-04-23
+
+### Added
+- Added meta-MCP-agent-agent capability for enhanced tool orchestration
+- Improved environment argument handling for better flexibility
+
 ## [0.3.3] - 2025-04-23
 
 ### Fixed
