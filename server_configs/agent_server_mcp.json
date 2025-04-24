@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "agent": {
+      "command": "python",
+      "args": ["-m", "mcp_servers.agent_ops"],
+      "env": {}
+    }
+  }
+}
