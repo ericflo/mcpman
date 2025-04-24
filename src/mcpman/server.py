@@ -49,22 +49,19 @@ class Server:
             ValueError: If the command is invalid
         """
         # Handle special case for npx command
-        command = (
-            shutil.which("npx")
-            if self.config["command"] == "npx"
-            else self.config["command"]
-        )
+        command = self.config["command"]
 
         if command is None:
             raise ValueError("The command must be a valid string and cannot be None.")
 
         # Create server parameters
+        env = os.environ.copy()
+        if self.config.get("env"):
+            env.update(self.config["env"])
         server_params = StdioServerParameters(
             command=command,
             args=self.config["args"],
-            env=(
-                {**os.environ, **self.config["env"]} if self.config.get("env") else None
-            ),
+            env=env,
         )
 
         # Return the context manager instance with appropriate error logging
@@ -169,22 +166,33 @@ class Server:
         if not self.session:
             logging.error(f"Server {self.name} session not initialized")
             # Return an error object instead of raising an exception
-            return type('ErrorObject', (), {
-                'isError': True, 
-                'content': f"Error: Server {self.name} session not initialized"
-            })()
+            return type(
+                "ErrorObject",
+                (),
+                {
+                    "isError": True,
+                    "content": f"Error: Server {self.name} session not initialized",
+                },
+            )()
 
         try:
             logging.debug(f"Executing {tool_name} via MCP session...")
             result = await self.session.call_tool(tool_name, arguments)
             return result
         except Exception as e:
-            logging.error(f"Exception executing tool {tool_name} on server {self.name}: {e}", exc_info=True)
+            logging.error(
+                f"Exception executing tool {tool_name} on server {self.name}: {e}",
+                exc_info=True,
+            )
             # Return error as an object with isError flag instead of raising
-            return type('ErrorObject', (), {
-                'isError': True, 
-                'content': f"Error executing tool {tool_name}: {str(e)}"
-            })()
+            return type(
+                "ErrorObject",
+                (),
+                {
+                    "isError": True,
+                    "content": f"Error executing tool {tool_name}: {str(e)}",
+                },
+            )()
 
 
 async def setup_servers(server_config: Dict[str, Any]) -> List[Server]:
