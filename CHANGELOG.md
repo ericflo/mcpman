@@ -4,6 +4,11 @@ All notable changes to MCPMan will be documented in this file.
 
 ## [Unreleased]
 
+## [0.3.5] - 2025-04-30
+
+### Added
+- Improved reasoner detection for better tool orchestration
+
 ## [0.3.4] - 2025-04-23
 
 ### Added
