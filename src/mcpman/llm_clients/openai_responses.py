@@ -12,6 +12,8 @@ from typing import Dict, List, Any, Optional, Tuple
 from .base import BaseLLMClient
 from ..logger import LLMClientLogger
 
+REASONER_PREFIXES = ["o1", "o3", "o4"]
+
 
 class OpenAIResponsesClient(BaseLLMClient):
     """
@@ -256,7 +258,7 @@ class OpenAIResponsesClient(BaseLLMClient):
         Args:
             messages: List of message objects in OpenAI Chat Completions format
             tools: Optional list of tool definitions
-            temperature: Sampling temperature (not used with o4-mini)
+            temperature: Sampling temperature (not used with o1, o3, o3-mini or o4-mini)
             max_tokens: Maximum number of tokens for the response
             tool_choice: Optional specification for tool selection behavior
             run_id: Optional run identifier for logging
@@ -305,7 +307,13 @@ class OpenAIResponsesClient(BaseLLMClient):
             }
 
             # Add temperature if not using o4-mini (which doesn't support it)
-            if not self.model_name.startswith("o4-mini"):
+            found_reasoner = False
+            for reasoner_prefix in REASONER_PREFIXES:
+                if self.model_name.startswith(reasoner_prefix):
+                    found_reasoner = True
+                    break
+
+            if not found_reasoner:
                 params["temperature"] = temperature
 
             # Add instructions with tool usage guidance
