@@ -4,6 +4,12 @@ All notable changes to MCPMan will be documented in this file.
 
 ## [Unreleased]
 
+## [0.3.6] - 2025-05-03
+
+### Changed
+- Updated dependency versions
+- Fixed tool shape differences between openai_compat and openai_responses
+
 ## [0.3.5] - 2025-04-30
 
 ### Added
