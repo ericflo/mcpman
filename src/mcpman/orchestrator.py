@@ -17,6 +17,8 @@ from colorama import Fore, Style
 
 from .server import Server
 from .llm_client import LLMClient
+from .llm_clients.openai_compat import OpenAICompatClient
+from .llm_clients.openai_responses import OpenAIResponsesClient
 from .tools import sanitize_name
 from .config import DEFAULT_VERIFICATION_MESSAGE
 from .models import Conversation, Message, ToolCall, ToolResult
@@ -329,14 +331,19 @@ class Orchestrator:
             )
 
             # Call the LLM with the verification tool
+            tool_choice = None
+            if isinstance(llm_client, OpenAICompatClient):
+                tool_choice = "auto"
+            elif isinstance(llm_client, OpenAIResponsesClient):
+                tool_choice = {
+                    "type": "function",
+                    "function": {"name": "verify_completion"},
+                }
             verification_response = llm_client.get_response(
                 verification_messages,
                 verification_schema,
                 temperature=temperature,
-                tool_choice={
-                    "type": "function",
-                    "function": {"name": "verify_completion"},
-                },
+                tool_choice=tool_choice,
                 run_id=run_id,
             )
 
