@@ -18,11 +18,11 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "httpx>=0.24.0",
-    "mcp>=1.6.0",
-    "colorama>=0.4.4",
-    "openai==1.75.0",
-    "anthropic==0.49.0",
+    "httpx>=0.28.1",
+    "mcp>=1.7.1",
+    "colorama>=0.4.6",
+    "openai==1.77.0",
+    "anthropic==0.50.0",
 ]
 
 [project.optional-dependencies]
